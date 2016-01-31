@@ -1,6 +1,6 @@
 [package]
 name = "safeboy"
 version = "0.1.0"
-authors = ["afernandez"]
+authors = ["Alberto Fernández <albertofem@gmail.com>"]
 
 [dependencies]
