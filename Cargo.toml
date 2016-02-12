@@ -3,4 +3,9 @@ name = "safeboy"
 version = "0.1.0"
 authors = ["Alberto Fernández <albertofem@gmail.com>"]
 
+[[bin]]
+name = "safeboy"
+path = "src/safeboy.rs"
+
 [dependencies]
+argparse = "*"
