@@ -8,4 +8,4 @@ name = "safeboy"
 path = "src/safeboy.rs"
 
 [dependencies]
-argparse = "*"
+clap = "*"

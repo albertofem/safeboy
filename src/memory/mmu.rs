@@ -2,36 +2,36 @@ pub struct MMU {
     bios: [i32; 256],
 
     rom: String,
-    cartType: i32,
+    cart_type: i32,
 
     mbc: MBC,
 
-    romOffs: i32,
-    ramOffs: i32,
+    rom_offs: i32,
+    ram_offs: i32,
 
     eram: [i32; 32768],
     wram: [i32; 8192],
     zram: [i32; 127],
 
-    inBios: bool,
+    in_bios: bool,
 
     ie: i32,
-    interruptFlag: i32
+    interrupt_flag: i32
 }
 
 pub struct MBC {
-    romBank: i32,
-    ramBank: i32,
-    ramOn: i32,
+    rom_bank: i32,
+    ram_bank: i32,
+    ram_on: i32,
     mode: i32
 }
 
 impl MBC {
     pub fn new() -> MBC {
         MBC {
-            romBank: 0,
-            ramBank: 0,
-            ramOn: 0,
+            rom_bank: 0,
+            ram_bank: 0,
+            ram_on: 0,
             mode: 0
         }
     }
@@ -60,21 +60,21 @@ impl MMU {
             ],
 
             rom: String::new(),
-            cartType: 0,
+            cart_type: 0,
 
             mbc: MBC::new(),
 
-            romOffs: 0x4000,
-            ramOffs: 0,
+            rom_offs: 0x4000,
+            ram_offs: 0,
 
             eram: [0; 32768],
             wram: [0; 8192],
             zram: [0; 127],
 
-            inBios: true,
+            in_bios: true,
 
             ie: 0,
-            interruptFlag: 0
+            interrupt_flag: 0
         }
     }
 }
