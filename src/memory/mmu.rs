@@ -71,7 +71,7 @@ impl MMU {
             wram: [0; 8192],
             zram: [0; 127],
 
-            in_bios: true,
+            in_bios: true,  
 
             ie: 0,
             interrupt_flag: 0

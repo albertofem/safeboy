@@ -9,3 +9,4 @@ path = "src/safeboy.rs"
 
 [dependencies]
 clap = "*"
+glium = "*"
