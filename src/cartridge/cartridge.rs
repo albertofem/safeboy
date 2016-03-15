@@ -20,6 +20,10 @@ impl Cartridge {
 
         self.data = data;
     }
+
+    pub fn data(&mut self) -> Vec<u8> {
+        self.data.clone()
+    }
 }
 
 #[cfg(test)]

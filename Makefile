@@ -1,7 +1,7 @@
 .PHONY: run test doc
 
 run:
-	cargo run data/tetris.gb
+	cargo run data/dmg.rom
 
 test:
 	cargo test --lib

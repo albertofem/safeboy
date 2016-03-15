@@ -2,8 +2,7 @@ extern crate safeboy;
 extern crate clap;
 
 use clap::{Arg, App};
-use safeboy::cartridge::cartridge::Cartridge;
-use safeboy::display::display::Display;
+use safeboy::frontend::gameboy::Gameboy;
 
 fn main() {
     let matches = App::new("Safeboy")
@@ -22,11 +21,7 @@ fn main() {
     println!("Welcome to Safeboy! We are preparing your rom to emulate...");
     println!("Loading rom file: {}", rom_file);
 
-    let mut cartridge = Cartridge::new();
+    let mut gameboy = Gameboy::new();
 
-    cartridge.read(&rom_file);
-
-    let mut display = Display::new(&rom_file);
-
-    display.run();
+    gameboy.run_game(&rom_file);
 }

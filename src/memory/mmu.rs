@@ -1,7 +1,7 @@
 pub struct MMU {
     bios: [i32; 256],
 
-    rom: String,
+    rom: Vec<u8>,
     cart_type: i32,
 
     mbc: MBC,
@@ -59,7 +59,7 @@ impl MMU {
                 0xF5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xFB, 0x86, 0x20, 0xFE, 0x3E, 0x01, 0xE0, 0x50
             ],
 
-            rom: String::new(),
+            rom: vec!(),
             cart_type: 0,
 
             mbc: MBC::new(),
@@ -75,6 +75,17 @@ impl MMU {
 
             ie: 0,
             interrupt_flag: 0
+        }
+    }
+
+    pub fn load_rom(&mut self, data: Vec<u8>) -> () {
+        self.rom = data;
+    }
+
+    pub fn read_byte(&mut self, address: u16) -> u8 {
+        match address & 0xF000 {
+            0x0000 => self.rom[address as usize],
+            _      => unreachable!()
         }
     }
 }
