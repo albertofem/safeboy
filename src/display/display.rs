@@ -43,6 +43,7 @@ impl Display {
 
     pub fn draw(&mut self) {
         let mut target = self.gliumDisplay.as_mut().unwrap().draw();
+
         target.clear_color(0.0, 0.0, 0.0, 1.0);
         target.finish().unwrap();
     }
