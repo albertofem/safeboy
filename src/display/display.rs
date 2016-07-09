@@ -12,18 +12,18 @@ pub enum Event {
 }
 
 pub struct Display {
-    gliumDisplay: Option<GlutinFacade>
+    glium_display: Option<GlutinFacade>
 }
 
 impl Display {
     pub fn new() -> Display {
         Display {
-            gliumDisplay: None
+            glium_display: None
         }
     }
 
     pub fn initialize(&mut self, game_name: &str) -> () {
-        self.gliumDisplay = Some(glium::glutin::WindowBuilder::new()
+        self.glium_display = Some(glium::glutin::WindowBuilder::new()
             .with_dimensions(WIDTH, HEIGHT)
             .with_title(format!("Safeboy: {:?}", game_name))
             .build_glium()
@@ -31,7 +31,7 @@ impl Display {
     }
 
     pub fn poll_events(&mut self) -> Event {
-        for event in self.gliumDisplay.as_mut().unwrap().poll_events() {
+        for event in self.glium_display.as_mut().unwrap().poll_events() {
             match event {
                 glium::glutin::Event::Closed => return Event::Closed,
                 _ => return Event::None
@@ -42,7 +42,7 @@ impl Display {
     }
 
     pub fn draw(&mut self) {
-        let mut target = self.gliumDisplay.as_mut().unwrap().draw();
+        let mut target = self.glium_display.as_mut().unwrap().draw();
 
         target.clear_color(0.0, 0.0, 0.0, 1.0);
         target.finish().unwrap();

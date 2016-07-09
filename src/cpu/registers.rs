@@ -1,4 +1,7 @@
 use cpu::clock::Clock;
+use memory::mmu::MMU;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct RegisterSet {
     // 8-bit registers
@@ -14,10 +17,12 @@ pub struct RegisterSet {
     f: u8,
 
     // 16-bit registers
-    pc: u16,
-    sp: u16,
+    pub pc: u16,
+    pub sp: u16,
 
-    clock: Clock
+    clock: Clock,
+
+    mmu: Option<Rc<RefCell<MMU>>>,
 }
 
 impl RegisterSet {
@@ -30,12 +35,13 @@ impl RegisterSet {
             e: 0,
             h: 0,
             l: 0,
-            
+
             f: 0,
-            
+
             pc: 0,
             sp: 0,
-            clock: Clock::new()
+            clock: Clock::new(),
+            mmu: None
         }
     }
 
@@ -52,9 +58,32 @@ impl RegisterSet {
         
         self.pc = 0;
         self.sp = 0;
+        self.mmu = None;
+    }
+
+    pub fn set_mmu(&mut self, mmu: Rc<RefCell<MMU>>) {
+        self.mmu = Some(mmu);
     }
 
     fn nop(&mut self) {
+        self.clock.m = 1;
+        self.clock.t = 4;
+    }
+
+    fn add_a_e(&mut self) {
+        self.a += self.e;
+        self.f = 0;
+
+        if self.a & 255 == 0 {
+            self.f |= 0x80;
+        }
+
+        if self.a > 255 {
+            self.f |= 0x10;
+        }
+
+        self.a &= 255;
+
         self.clock.m = 1;
         self.clock.t = 4;
     }
@@ -63,7 +92,7 @@ impl RegisterSet {
         match opcode {
             // 00
             0x00 => self.nop(),              // NOP
-            0x01 => unimplemented!(),
+            0x83 => self.add_a_e(),
             0x02 => unimplemented!(),
             0x03 => unimplemented!(),
             0x04 => unimplemented!(),
@@ -102,6 +131,13 @@ mod tests {
 
         assert_eq!(1, registers.clock.m);
         assert_eq!(4, registers.clock.t);
+    }
+
+    #[test]
+    fn it_executes_add_a_e() {
+        let mut registers = RegisterSet::new();
+
+        registers.exec(0x83);
     }
 
     #[test]

@@ -1,35 +1,48 @@
 use cartridge::cartridge::Cartridge;
 use cpu::z80::Z80;
+use cpu::registers::RegisterSet;
 use memory::mmu::MMU;
 use gpu::gpu::GPU;
 use display::display::{Display, Event};
+use std::rc::Rc;
+use std::cell::RefCell;
 
-pub struct Gameboy<'a> {
-    cpu: Z80<'a>,
+pub struct Gameboy {
+    cpu: Z80,
     cartridge: Cartridge,
     mmu: MMU,
     gpu: GPU,
-    display: Display
+    display: Display,
+    registers: RegisterSet
 }
 
-impl<'a> Gameboy<'a> {
-    pub fn new() -> Gameboy<'a> {
+impl Gameboy {
+    pub fn new() -> Gameboy {
         Gameboy {
             cpu: Z80::new(),
             cartridge: Cartridge::new(),
             mmu: MMU::new(),
             gpu: GPU::new(),
-            display: Display::new()
+            display: Display::new(),
+            registers: RegisterSet::new()
         }
     }
 
-    pub fn run_game(&'a mut self, rom_file: &str) -> () {
+    pub fn run_game(mut self, rom_file: &str) -> () {
         self.cartridge.read(rom_file);
         self.mmu.load_rom(self.cartridge.data());
         self.display.initialize(rom_file);
 
-        // initialize
-        self.cpu.set_mmu(&self.mmu);
+        let registers = Rc::new(RefCell::new(self.registers));
+
+        // initialize registers
+        self.mmu.set_registers(registers.clone());
+        self.cpu.set_registers(registers.clone());
+
+        let mmu = Box::new(Rc::new(RefCell::new(self.mmu)));
+
+        // initialize cpu
+        self.cpu.set_mmu(mmu);
 
         loop {
             match self.display.poll_events() {

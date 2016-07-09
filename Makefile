@@ -1,10 +1,10 @@
 .PHONY: run test doc
 
 run:
-	cargo run data/dmg.rom
+	RUST_BACKTRACE=1 cargo run data/tetris.gb
 
 test:
-	cargo test --lib
+	RUST_BACKTRACE=1 cargo test --lib
 
 doc:
 	cargo doc --no-deps --open
