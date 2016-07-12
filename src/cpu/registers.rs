@@ -3,149 +3,181 @@ use memory::mmu::MMU;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[derive(Copy, Clone)]
 pub struct RegisterSet {
     // 8-bit registers
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u8,
-    e: u8,
-    h: u8,
-    l: u8,
+    pub a: u8,
+    pub b: u8,
+    pub c: u8,
+    pub d: u8,
+    pub e: u8,
+    pub h: u8,
+    pub l: u8,
 
     // flag register
-    f: u8,
+    pub f: u8,
 
     // 16-bit registers
     pub pc: u16,
     pub sp: u16,
+}
 
-    clock: Clock,
-
-    mmu: Option<Rc<RefCell<MMU>>>,
+#[derive(Copy, Clone)]
+pub enum CpuFlag
+{
+    C = 0b00010000,
+    H = 0b00100000,
+    N = 0b01000000,
+    Z = 0b10000000,
 }
 
 impl RegisterSet {
     pub fn new() -> RegisterSet {
         RegisterSet {
-            a: 0,
-            b: 0,
-            c: 0,
-            d: 0,
-            e: 0,
-            h: 0,
-            l: 0,
-
-            f: 0,
-
-            pc: 0,
-            sp: 0,
-            clock: Clock::new(),
-            mmu: None
+            a: 0x01,
+            f: 0xB0,
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xD8,
+            h: 0x01,
+            l: 0x4D,
+            pc: 0x0100,
+            sp: 0xFFFE,
         }
     }
 
-    pub fn reset(&mut self) {
-        self.a = 0;
-        self.b = 0;
-        self.c = 0;
-        self.d = 0;
-        self.e = 0;
-        self.h = 0;
-        self.l = 0;
-        
-        self.f = 0;
-        
-        self.pc = 0;
-        self.sp = 0;
-        self.mmu = None;
+    pub fn af(&self) -> u16 {
+        ((self.a as u16) << 8) | ((self.f & 0xF0) as u16)
+    }
+    pub fn bc(&self) -> u16 {
+        ((self.b as u16) << 8) | (self.c as u16)
+    }
+    pub fn de(&self) -> u16 {
+        ((self.d as u16) << 8) | (self.e as u16)
+    }
+    pub fn hl(&self) -> u16 {
+        ((self.h as u16) << 8) | (self.l as u16)
+    }
+    pub fn hld(&mut self) -> u16 {
+        let res = self.hl();
+        self.sethl(res - 1);
+        res
+    }
+    pub fn hli(&mut self) -> u16 {
+        let res = self.hl();
+        self.sethl(res + 1);
+        res
     }
 
-    pub fn set_mmu(&mut self, mmu: Rc<RefCell<MMU>>) {
-        self.mmu = Some(mmu);
+    pub fn setaf(&mut self, value: u16) {
+        self.a = (value >> 8) as u8;
+        self.f = (value & 0x00F0) as u8;
+    }
+    pub fn setbc(&mut self, value: u16) {
+        self.b = (value >> 8) as u8;
+        self.c = (value & 0x00FF) as u8;
+    }
+    pub fn setde(&mut self, value: u16) {
+        self.d = (value >> 8) as u8;
+        self.e = (value & 0x00FF) as u8;
+    }
+    pub fn sethl(&mut self, value: u16) {
+        self.h = (value >> 8) as u8;
+        self.l = (value & 0x00FF) as u8;
     }
 
-    fn nop(&mut self) {
-        self.clock.m = 1;
-        self.clock.t = 4;
-    }
-
-    fn add_a_e(&mut self) {
-        self.a += self.e;
-        self.f = 0;
-
-        if self.a & 255 == 0 {
-            self.f |= 0x80;
+    pub fn flag(&mut self, flags: CpuFlag, set: bool) {
+        let mask = flags as u8;
+        match set {
+            true  => self.f |=  mask,
+            false => self.f &= !mask,
         }
-
-        if self.a > 255 {
-            self.f |= 0x10;
-        }
-
-        self.a &= 255;
-
-        self.clock.m = 1;
-        self.clock.t = 4;
+        self.f &= 0xF0;
     }
 
-    pub fn exec(&mut self, opcode: u8) {
-        match opcode {
-            // 00
-            0x00 => self.nop(),              // NOP
-            0x83 => self.add_a_e(),
-            0x02 => unimplemented!(),
-            0x03 => unimplemented!(),
-            0x04 => unimplemented!(),
-            0x05 => unimplemented!(),
-            0x06 => unimplemented!(),
-            0x07 => unimplemented!(),
-            0x08 => unimplemented!(),
-            0x09 => unimplemented!(),
-            0x0a => unimplemented!(),
-            0x0b => unimplemented!(),
-            0x0c => unimplemented!(),
-            0x0d => unimplemented!(),
-            0x0e => unimplemented!(),
-            0x0f => unimplemented!(),
+    pub fn getflag(&self, flags: CpuFlag) -> bool {
+        let mask = flags as u8;
+        self.f & mask > 0
+    }
 
-            // out of range
-            _    => panic!("opcode out of range")
-        }
+    #[cfg(test)]
+    fn setf(&mut self, flags: u8)
+    {
+        self.f = flags & 0xF0;
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod test
+{
+    use super::RegisterSet;
+    use super::CpuFlag::{C, H, N, Z};
 
     #[test]
-    fn it_instantiates() {
-        let _ = RegisterSet::new();
+    fn wide_registers()
+    {
+        let mut reg = RegisterSet::new();
+
+        reg.a = 0x12;
+        reg.setf(0x23);
+        reg.b = 0x34;
+        reg.c = 0x45;
+        reg.d = 0x56;
+        reg.e = 0x67;
+        reg.h = 0x78;
+        reg.l = 0x89;
+
+        assert_eq!(reg.af(), 0x1220);
+        assert_eq!(reg.bc(), 0x3445);
+        assert_eq!(reg.de(), 0x5667);
+        assert_eq!(reg.hl(), 0x7889);
+
+        reg.setaf(0x1111);
+        reg.setbc(0x1111);
+        reg.setde(0x1111);
+        reg.sethl(0x1111);
+
+        assert_eq!(reg.af(), 0x1110);
+        assert_eq!(reg.bc(), 0x1111);
+        assert_eq!(reg.de(), 0x1111);
+        assert_eq!(reg.hl(), 0x1111);
     }
 
     #[test]
-    fn it_executes_nop() {
-        let mut registers = RegisterSet::new();
+    fn flags()
+    {
+        let mut reg = Registers::new();
+        let flags = [C, H, N, Z];
 
-        registers.exec(0x00);
+        assert_eq!(reg.f & 0x0F, 0);
 
-        assert_eq!(1, registers.clock.m);
-        assert_eq!(4, registers.clock.t);
+        reg.setf(0x00);
+
+        for i in 0 .. 4 {
+            let mask = flags[i];
+            assert_eq!(reg.getflag(mask), false);
+
+            reg.flag(mask, true);
+            assert_eq!(reg.getflag(mask), true);
+
+            reg.flag(mask, false);
+            assert_eq!(reg.getflag(mask), false);
+        }
     }
 
     #[test]
-    fn it_executes_add_a_e() {
-        let mut registers = RegisterSet::new();
-
-        registers.exec(0x83);
-    }
-
-    #[test]
-    fn it_resets() {
-        let mut registers = RegisterSet::new();
-
-        registers.reset();
-
-        assert_eq!(0, registers.a);
+    fn hl_special()
+    {
+        let mut reg = Registers::new();
+        reg.sethl(0x1234);
+        assert_eq!(reg.hl(), 0x1234);
+        assert_eq!(reg.hld(), 0x1234);
+        assert_eq!(reg.hld(), 0x1233);
+        assert_eq!(reg.hld(), 0x1232);
+        assert_eq!(reg.hli(), 0x1231);
+        assert_eq!(reg.hli(), 0x1232);
+        assert_eq!(reg.hli(), 0x1233);
+        assert_eq!(reg.hl(), 0x1234);
     }
 }

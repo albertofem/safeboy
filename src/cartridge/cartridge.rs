@@ -21,7 +21,7 @@ impl Cartridge {
         self.data = data;
     }
 
-    pub fn data(&mut self) -> Vec<u8> {
+    pub fn data(&self) -> Vec<u8> {
         self.data.clone()
     }
 }
@@ -39,6 +39,12 @@ mod tests {
     fn it_open_rom_file() {
         let mut cartridge = Cartridge::new();
 
-        cartridge.read("./data/tetris.gb");
+        cartridge.read("./data/dmg.rom");
+
+        let data = cartridge.data();
+
+        for i in 0..data.len() {
+            assert_eq!(data[i], data[i]);
+        }
     }
 }
