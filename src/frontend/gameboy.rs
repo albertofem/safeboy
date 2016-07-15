@@ -7,27 +7,21 @@ use display::display::{Display, Event};
 use std::rc::Rc;
 use std::cell::RefCell;
 
-pub struct Gameboy<'a> {
-    cpu: Z80<'a>,
-    cartridge: Cartridge,
-    gpu: GPU,
+pub struct Gameboy {
+    cpu: Z80,
     display: Display
 }
 
-impl<'a> Gameboy<'a> {
-    pub fn new() -> Gameboy<'a> {
+impl Gameboy {
+    pub fn new(rom_file: &str) -> Gameboy {
         Gameboy {
-            cpu: Z80::new(),
-            cartridge: Cartridge::new(),
-            gpu: GPU::new(),
+            cpu: Z80::new(rom_file),
             display: Display::new(),
         }
     }
 
-    pub fn run_game(mut self, rom_file: &str) -> () {
-        self.cartridge.read(rom_file);
-        self.cpu.load_rom(self.cartridge.data());
-        self.display.initialize(rom_file);
+    pub fn run(&mut self) -> () {
+        self.display.initialize();
 
         loop {
             match self.display.poll_events() {
@@ -38,11 +32,7 @@ impl<'a> Gameboy<'a> {
                 _ => ()
             }
 
-            self.cpu.step();
-            self.gpu.step();
-            self.cpu.interrupt();
-
-            self.display.draw();
+            self.display.draw([]);
         }
     }
 }

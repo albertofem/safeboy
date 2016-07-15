@@ -4,25 +4,21 @@ use std::path;
 
 mod mbc0;
 
+const TITLE_START : u16 = 0x134;
+const TITLE_SIZE : u16 = 11;
+
 pub trait MBC : Send {
-    fn readrom(&self, a: u16) -> u8;
-    fn readram(&self, a: u16) -> u8;
-    fn writerom(&mut self, a: u16, v: u8);
-    fn writeram(&mut self, a: u16, v: u8);
+    fn read_rom(&self, a: u16) -> u8;
+    fn write_rom(&mut self, a: u16, v: u8);
 
-    fn romname(&self) -> String {
-        const TITLE_START : u16 = 0x134;
-        const CGB_FLAG : u16 = 0x143;
+    fn read_ram(&self, a: u16) -> u8;
+    fn write_ram(&mut self, a: u16, v: u8);
 
-        let title_size = match self.readrom(CGB_FLAG) & 0x80 {
-            0x80 => 11,
-            _ => 16,
-        };
+    fn rom_name(&self) -> String {
+        let mut result = String::with_capacity(TITLE_SIZE as usize);
 
-        let mut result = String::with_capacity(title_size as usize);
-
-        for i in 0..title_size {
-            match self.readrom(TITLE_START + i) {
+        for i in 0..TITLE_SIZE {
+            match self.read_rom(TITLE_START + i) {
                 0 => break,
                 v => result.push(v as char),
             }
@@ -32,18 +28,26 @@ pub trait MBC : Send {
     }
 }
 
-pub fn get_mbc(file: path::PathBuf) -> ::StrResult<Box<MBC+'static>> {
+pub fn load_mbc(rom_file: path::PathBuf) -> Result<Box<MBC+'static>, &'static str> {
     let mut data = vec![];
+    let mut file = File::open(rom_file).unwrap();
 
-    try!(File::open(&file).and_then(|mut f| f.read_to_end(&mut data)).map_err(|_| "Could not read ROM"));
+    file.read_to_end(&mut data);
 
-    if data.len() < 0x150 { return Err("Rom size to small"); }
+    if data.len() < 0x150 {
+        return Err("Rom size too small!")
+    }
 
     try!(check_checksum(&data));
 
-    match data[0x147] {
-        0x00 => mbc0::MBC0::new(data).map(|v| Box::new(v) as Box<MBC>),
-        _ => { Err("Unsupported MBC type") },
+    let mbc_type = data[0x147];
+
+    match mbc_type {
+        0x00 => {
+            let mbc = mbc0::MBC0::new(data);
+            Ok(Box::new(mbc) as Box<MBC>)
+        },
+        _ => Err("Unsupported MBC"),
     }
 }
 
@@ -57,31 +61,16 @@ fn ram_size(v: u8) -> usize {
     }
 }
 
-fn check_checksum(data: &[u8]) -> ::StrResult<()> {
+fn check_checksum(data: &[u8]) -> Result<(), &'static str> {
     let mut value: u8 = 0;
+
     for i in 0x134 .. 0x14D {
         value = value.wrapping_sub(data[i]).wrapping_sub(1);
     }
-    match data[0x14D] == value
-        {
-            true => Ok(()),
-            false => Err("Cartridge checksum is invalid"),
-        }
-}
 
-#[cfg(test)]
-mod test {
-    #[test]
-    fn checksum_zero() {
-        let mut data = vec![0; 0x150];
-        data[0x14D] = -(0x14D_i32 - 0x134_i32) as u8;
-        super::check_checksum(&data).unwrap();
+    if data[0x14D] != value {
+        return Err("MBC checksum is broken")
     }
 
-    #[test]
-    fn checksum_ones() {
-        let mut data = vec![1; 0x150];
-        data[0x14D] = (-(0x14D_i32 - 0x134_i32) * 2) as u8;
-        super::check_checksum(&data).unwrap();
-    }
+    Ok(())
 }

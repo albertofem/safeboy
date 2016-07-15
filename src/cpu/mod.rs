@@ -3,3 +3,4 @@ pub mod z80;
 
 pub mod clock;
 pub mod registers;
+pub mod timer;

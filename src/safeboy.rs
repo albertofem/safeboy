@@ -21,7 +21,7 @@ fn main() {
     println!("Welcome to Safeboy! We are preparing your rom to emulate...");
     println!("Loading rom file: {}", rom_file);
 
-    let mut gameboy = Gameboy::new();
+    let mut gameboy = Gameboy::new(rom_file);
 
-    gameboy.run_game(&rom_file);
+    gameboy.run();
 }
