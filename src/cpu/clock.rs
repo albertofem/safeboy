@@ -1,6 +1,6 @@
 pub struct Clock {
-    pub m: u8,
-    pub t: u8
+    pub m: u32,
+    pub t: u32
 }
 
 impl Clock {

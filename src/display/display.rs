@@ -7,11 +7,28 @@ use self::glium::{DisplayBuild, Surface};
 use self::glium::backend::glutin_backend::GlutinFacade;
 use self::glium::texture::texture2d::Texture2d;
 use self::glium::texture::RawImage2d;
+use self::glium::glutin::VirtualKeyCode;
+use self::glium::glutin::ElementState::{Pressed, Released};
 use std::borrow::Cow;
 
-pub enum Event {
+pub enum EventType {
     None,
-    Closed
+    Pressed,
+    Released
+}
+
+pub enum Event {
+    Unknown,
+    None,
+    Closed,
+    Start,
+    Select,
+    A,
+    B,
+    Up,
+    Down,
+    Left,
+    Right
 }
 
 pub struct Display {
@@ -45,15 +62,50 @@ impl Display {
         self.reset();
     }
 
-    pub fn poll_events(&mut self) -> Event {
+    pub fn poll_events(&mut self) -> (EventType, Event) {
         for event in self.glium_display.as_mut().unwrap().poll_events() {
-            match event {
-                glium::glutin::Event::Closed => return Event::Closed,
-                _ => return Event::None
-            }
+            return match event {
+                glium::glutin::Event::Closed => {
+                    (EventType::None, Event::Closed)
+                },
+                glium::glutin::Event::KeyboardInput(Pressed, _, Some(pressed_key)) => {
+                    (EventType::Pressed, Display::map_events(pressed_key).unwrap())
+                },
+                glium::glutin::Event::KeyboardInput(Released, _, Some(released_key)) => {
+                    (EventType::Released, Display::map_events(released_key).unwrap())
+                }
+                _ => (EventType::None, Event::None)
+            };
         }
 
-        Event::None
+        (EventType::None, Event::None)
+    }
+
+    fn map_events(glutin_key: VirtualKeyCode) -> Result<Event, &'static str> {
+        match glutin_key {
+            VirtualKeyCode::Return => {
+                Ok(Event::Start)
+            },
+            VirtualKeyCode::Z => {
+                Ok(Event::A)
+            },
+            VirtualKeyCode::X => {
+                Ok(Event::B)
+            },
+            VirtualKeyCode::Up => {
+                Ok(Event::Up)
+            },
+            VirtualKeyCode::Down => {
+                Ok(Event::Down)
+            },
+            VirtualKeyCode::Left => {
+                Ok(Event::Left)
+            },
+            VirtualKeyCode::Right => {
+                Ok(Event::Right)
+            },
+            _ => Ok(Event::Unknown)
+        }
     }
 
     pub fn draw(&mut self, raw_pixels: &[u8]) {
@@ -74,7 +126,7 @@ impl Display {
             raw_image
         );
 
-        let mut target = self.glium_display.as_mut().unwrap().draw();
+        let target = self.glium_display.as_mut().unwrap().draw();
 
         self.screen.as_mut().unwrap().as_surface().blit_whole_color_to(
             &target,

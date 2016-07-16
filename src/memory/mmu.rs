@@ -255,7 +255,7 @@ impl MMU {
                 // panic!("Serial port unimplemented")
             },
 
-            _ => panic!("Unimplemented memory instruction"),
+            unimplemented => println!("Unimplemented memory instruction: {0:x}", unimplemented),
         };
     }
 

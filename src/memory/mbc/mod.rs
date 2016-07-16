@@ -28,14 +28,14 @@ pub trait MBC : Send {
     }
 }
 
-pub fn load_mbc(rom_file: path::PathBuf) -> Result<Box<MBC+'static>, &'static str> {
+pub fn load_mbc(rom_file: path::PathBuf) -> Result<Box<MBC+'static>, String> {
     let mut data = vec![];
     let mut file = File::open(rom_file).unwrap();
 
     file.read_to_end(&mut data);
 
     if data.len() < 0x150 {
-        return Err("Rom size too small!")
+        return Err("Rom size too small!".to_string())
     }
 
     try!(check_checksum(&data));
@@ -47,17 +47,7 @@ pub fn load_mbc(rom_file: path::PathBuf) -> Result<Box<MBC+'static>, &'static st
             let mbc = mbc0::MBC0::new(data);
             Ok(Box::new(mbc) as Box<MBC>)
         },
-        _ => Err("Unsupported MBC"),
-    }
-}
-
-fn ram_size(v: u8) -> usize {
-    match v {
-        1 => 0x800,
-        2 => 0x2000,
-        3 => 0x8000,
-        4 => 0x20000,
-        _ => 0,
+        _ => Err(format!("Unsupported MBC: {0:x}", mbc_type)),
     }
 }
 
