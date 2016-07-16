@@ -211,17 +211,11 @@ impl MMU {
             },
 
             0xFF10 ... 0xFF3F => {
-                // panic!("Sound unimplemented")
+                // Sound unimplemented
             },
 
             0xFF46 => {
                 self.oamdma(value)
-            },
-
-            0xFF4D => {
-                if value & 0x1 == 0x1 {
-                    //self.speed_switch_req = true;
-                }
             },
 
             0xFF40 ... 0xFF4F => {
@@ -252,7 +246,7 @@ impl MMU {
             },
 
             0xFF01 ... 0xFF02 => {
-                // panic!("Serial port unimplemented")
+                // Serial port unimplemented
             },
 
             unimplemented => println!("Unimplemented memory instruction: {0:x}", unimplemented),
