@@ -49,15 +49,17 @@ impl Display {
             .with_dimensions(WIDTH, HEIGHT)
             .with_title(format!("Safeboy"))
             .build_glium()
-            .unwrap());
+            .unwrap()
+        );
 
         self.screen = Some(Texture2d::empty_with_format(
-            self.glium_display.as_mut().unwrap(),
-            glium::texture::UncompressedFloatFormat::U8U8U8,
-            glium::texture::MipmapsOption::NoMipmap,
-            WIDTH as u32,
-            HEIGHT as u32
-        ).unwrap());
+                self.glium_display.as_mut().unwrap(),
+                glium::texture::UncompressedFloatFormat::U8U8U8,
+                glium::texture::MipmapsOption::NoMipmap,
+                WIDTH as u32,
+                HEIGHT as u32
+            ).unwrap()
+        );
 
         self.reset();
     }
@@ -86,6 +88,9 @@ impl Display {
             VirtualKeyCode::Return => {
                 Ok(Event::Start)
             },
+            VirtualKeyCode::Back => {
+                Ok(Event::Select)
+            }
             VirtualKeyCode::Z => {
                 Ok(Event::A)
             },

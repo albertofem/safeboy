@@ -4,7 +4,6 @@ pub struct Keypad {
     pub interrupt: u8
 }
 
-#[derive(Debug, Clone, Copy)]
 pub enum Key {
     A,
     B,
@@ -27,91 +26,88 @@ impl Keypad {
             interrupt: 0
         };
 
-        keypad.update();
-
         keypad
     }
 
-    fn update(&mut self) {
-        self.column &= 0x30;
-
-        if self.column & 0x10 == 0x10 {
-            self.column |= self.keys[0];
-        }
-
-        if self.column & 0x20 == 0x20 {
-            self.column |= self.keys[1];
-        }
-    }
-
     pub fn rb(&self) -> u8 {
-        self.column
+        match self.column {
+            0x00 => {
+                0x00
+            },
+
+            0x10 => {
+                self.keys[0]
+            },
+
+            0x20 => {
+                self.keys[1]
+            },
+
+            _ => panic!("Invalid keypad read")
+        }
     }
 
     pub fn wb(&mut self, value: u8) {
-        self.column = value;
-        self.update();
+        self.column = value & 0x30;
     }
 
     pub fn key_down(&mut self, key: Key) {
         match key {
             Key::A => {
-                self.keys[0] &= !(1 << 0)
+                self.keys[0] &= 0xE
             },
             Key::B => {
-                self.keys[0] &= !(1 << 1)
+                self.keys[0] &= 0xD
             },
             Key::Select => {
-                self.keys[0] &= !(1 << 2)
+                self.keys[0] &= 0xB
             },
             Key::Start => {
-                self.keys[0] &= !(1 << 3)
+                self.keys[0] &= 0x7
             },
             Key::Up => {
-                self.keys[1] &= !(1 << 2)
+                self.keys[1] &= 0xB
             },
             Key::Down => {
-                self.keys[1] &= !(1 << 3)
+                self.keys[1] &= 0x7
             },
             Key::Right => {
-                self.keys[1] &= !(1 << 0)
+                self.keys[1] &= 0xE
             },
             Key::Left => {
-                self.keys[1] &= !(1 << 1)
+                self.keys[1] &= 0xD
             }
         }
 
         self.interrupt |= 0x10;
-        self.update();
     }
 
     pub fn key_up(&mut self, key: Key) {
         match key {
             Key::A => {
-                self.keys[0] |= 1 << 0
+                self.keys[0] |= 0x1
             },
             Key::B => {
-                self.keys[0] |= 1 << 1
+                self.keys[0] |= 0x2
             },
             Key::Select => {
-                self.keys[0] |= 1 << 2
+                self.keys[0] |= 0x8
             },
             Key::Start => {
-                self.keys[0] |= 1 << 3
+                self.keys[0] |= 0x4
             },
             Key::Up => {
-                self.keys[1] |= 1 << 2
+                self.keys[1] |= 0x8
             },
             Key::Down => {
-                self.keys[1] |= 1 << 3
+                self.keys[1] |= 0x4
             },
             Key::Right => {
-                self.keys[1] |= 1 << 0
+                self.keys[1] |= 0x1
             },
             Key::Left => {
-                self.keys[1] |= 1 << 1
+                self.keys[1] |= 0x2
             }
         }
-        self.update();
     }
 }

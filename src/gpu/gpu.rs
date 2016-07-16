@@ -176,6 +176,7 @@ impl GPU {
         match a {
             0x8000 ... 0x9FFF => self.vram[(self.vrambank * 0x2000) | (a as usize & 0x1FFF)],
             0xFE00 ... 0xFE9F => self.voam[a as usize - 0xFE00],
+
             0xFF40 => {
                 (if self.lcd_on { 0x80 } else { 0 }) |
                     (if self.win_tilemap == 0x9C00 { 0x40 } else { 0 }) |
@@ -186,6 +187,7 @@ impl GPU {
                     (if self.sprite_on { 0x02 } else { 0 }) |
                     (if self.lcdc0 { 0x01 } else { 0 })
             },
+
             0xFF41 => {
                 (if self.lyc_inte { 0x40 } else { 0 }) |
                     (if self.m2_inte { 0x20 } else { 0 }) |
@@ -194,6 +196,7 @@ impl GPU {
                     (if self.line == self.lyc { 0x04 } else { 0 }) |
                     self.mode
             },
+
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.line,
@@ -205,13 +208,22 @@ impl GPU {
             0xFF4A => self.winy,
             0xFF4B => self.winx,
             0xFF4F => self.vrambank as u8,
+
             0xFF68 | 0xFF69 => {
                 panic!("GameBoy Color not implemented")
             },
-            0xFF6A => { self.csprit_ind | (if self.csprit_inc { 0x80 } else { 0 }) },
+
+            0xFF6A => {
+                self.csprit_ind | (if self.csprit_inc {
+                    0x80
+                } else {
+                    0
+                })
+            },
             0xFF6B => {
                 let palnum = (self.csprit_ind >> 3) as usize;
                 let colnum = ((self.csprit_ind >> 1) & 0x3) as usize;
+
                 if self.csprit_ind & 0x01 == 0x00 {
                     self.csprit[palnum][colnum][0] | ((self.csprit[palnum][colnum][1] & 0x07) << 5)
                 } else {
@@ -233,40 +245,90 @@ impl GPU {
             0xFE00 ... 0xFE9F => self.voam[a as usize - 0xFE00] = v,
             0xFF40 => {
                 let orig_lcd_on = self.lcd_on;
+
                 self.lcd_on = v & 0x80 == 0x80;
-                self.win_tilemap = if v & 0x40 == 0x40 { 0x9C00 } else { 0x9800 };
+
+                self.win_tilemap = if v & 0x40 == 0x40 {
+                    0x9C00
+                } else {
+                    0x9800
+                };
+
                 self.win_on = v & 0x20 == 0x20;
-                self.tilebase = if v & 0x10 == 0x10 { 0x8000 } else { 0x8800 };
-                self.bg_tilemap = if v & 0x08 == 0x08 { 0x9C00 } else { 0x9800 };
-                self.sprite_size = if v & 0x04 == 0x04 { 16 } else { 8 };
+
+                self.tilebase = if v & 0x10 == 0x10 {
+                    0x8000
+                } else {
+                    0x8800
+                };
+
+                self.bg_tilemap = if v & 0x08 == 0x08 {
+                    0x9C00
+                } else {
+                    0x9800
+                };
+
+                self.sprite_size = if v & 0x04 == 0x04 {
+                    16
+                } else {
+                    8
+                };
+
                 self.sprite_on = v & 0x02 == 0x02;
                 self.lcdc0 = v & 0x01 == 0x01;
-                if orig_lcd_on && !self.lcd_on { self.modeclock = 0; self.line = 0; self.mode = 0; self.clear_screen(); }
+
+                if orig_lcd_on && !self.lcd_on {
+                    self.modeclock = 0;
+                    self.line = 0;
+                    self.mode = 0;
+                    self.clear_screen();
+                }
+
             },
+
             0xFF41 => {
                 self.lyc_inte = v & 0x40 == 0x40;
                 self.m2_inte = v & 0x20 == 0x20;
                 self.m1_inte = v & 0x10 == 0x10;
                 self.m0_inte = v & 0x08 == 0x08;
             },
+
             0xFF42 => self.scy = v,
             0xFF43 => self.scx = v,
             0xFF44 => {}, // Read-only
             0xFF45 => self.lyc = v,
             0xFF46 => panic!("0xFF46 should be handled by MMU"),
-            0xFF47 => { self.palbr = v; self.update_pal(); },
-            0xFF48 => { self.pal0r = v; self.update_pal(); },
-            0xFF49 => { self.pal1r = v; self.update_pal(); },
+
+            0xFF47 => {
+                self.palbr = v; self.update_pal();
+            },
+
+            0xFF48 => {
+                self.pal0r = v; self.update_pal();
+            },
+
+            0xFF49 => {
+                self.pal1r = v;
+                self.update_pal();
+            },
+
             0xFF4A => self.winy = v,
             0xFF4B => self.winx = v,
             0xFF4F => self.vrambank = (v & 0x01) as usize,
+
             0xFF68 | 0xFF69 => {
                 println!("GameBoy Color not implemented")
             },
-            0xFF6A => { self.csprit_ind = v & 0x3F; self.csprit_inc = v & 0x80 == 0x80; },
+
+            0xFF6A => {
+                self.csprit_ind = v & 0x3F;
+                self.csprit_inc = v & 0x80 == 0x80;
+            },
+
             0xFF6B => {
                 let palnum = (self.csprit_ind >> 3) as usize;
                 let colnum = ((self.csprit_ind >> 1) & 0x03) as usize;
+
                 if self.csprit_ind & 0x01 == 0x00 {
                     self.csprit[palnum][colnum][0] = v & 0x1F;
                     self.csprit[palnum][colnum][1] = (self.csprit[palnum][colnum][1] & 0x18) | (v >> 5);
@@ -274,7 +336,10 @@ impl GPU {
                     self.csprit[palnum][colnum][1] = (self.csprit[palnum][colnum][1] & 0x07) | ((v & 0x3) << 3);
                     self.csprit[palnum][colnum][2] = (v >> 2) & 0x1F;
                 }
-                if self.csprit_inc { self.csprit_ind = (self.csprit_ind + 1) & 0x3F; };
+
+                if self.csprit_inc {
+                    self.csprit_ind = (self.csprit_ind + 1) & 0x3F;
+                };
             },
             _ => { println!("GPU does not handle write {:04X}", a) },
         }

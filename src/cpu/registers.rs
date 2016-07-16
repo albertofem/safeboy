@@ -95,10 +95,4 @@ impl RegisterSet {
         let mask = flags as u8;
         self.f & mask > 0
     }
-
-    #[cfg(test)]
-    fn setf(&mut self, flags: u8)
-    {
-        self.f = flags & 0xF0;
-    }
 }
