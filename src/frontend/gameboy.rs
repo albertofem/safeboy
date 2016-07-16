@@ -43,7 +43,6 @@ impl Gameboy {
                 EventSignal::Close
             },
             (_, Event::Unknown) => {
-                println!("Unknown key");
                 EventSignal::None
             },
             (EventType::Pressed, pressed_key) => {

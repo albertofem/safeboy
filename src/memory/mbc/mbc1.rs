@@ -40,20 +40,6 @@ impl MBC for MBC1 {
         *self.rom.get(idx).unwrap_or(&0)
     }
 
-    fn read_ram(&self, a: u16) -> u8 {
-        if !self.ram_on {
-            return 0
-        }
-
-        let rambank = if self.ram_mode {
-            self.rambank
-        } else {
-            0
-        };
-
-        self.ram[(rambank * 0x2000) | ((a & 0x1FFF) as usize)]
-    }
-
     fn write_rom(&mut self, a: u16, v: u8) {
         match a {
             0x0000 ... 0x1FFF => {
@@ -85,6 +71,20 @@ impl MBC for MBC1 {
 
             _ => panic!("Could not write to {:04X} (MBC1)", a),
         }
+    }
+
+    fn read_ram(&self, a: u16) -> u8 {
+        if !self.ram_on {
+            return 0
+        }
+
+        let rambank = if self.ram_mode {
+            self.rambank
+        } else {
+            0
+        };
+
+        self.ram[(rambank * 0x2000) | ((a & 0x1FFF) as usize)]
     }
 
     fn write_ram(&mut self, a: u16, v: u8) {

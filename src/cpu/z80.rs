@@ -87,7 +87,7 @@ impl Z80 {
             return 0
         }
 
-        let triggered = self.mmu.inte & self.mmu.intf;
+        let triggered = self.mmu.interrupt_enable & self.mmu.interrupt_flag;
 
         if triggered == 0 {
             return 0
@@ -102,7 +102,7 @@ impl Z80 {
             panic!("Invalid interrupt triggered");
         }
 
-        self.mmu.intf &= !(1 << n);
+        self.mmu.interrupt_flag &= !(1 << n);
 
         let pc = self.registers.pc;
 
