@@ -51,30 +51,14 @@ impl Keypad {
 
     pub fn key_down(&mut self, key: Key) {
         match key {
-            Key::A => {
-                self.keys[0] &= 0xE
-            },
-            Key::B => {
-                self.keys[0] &= 0xD
-            },
-            Key::Select => {
-                self.keys[0] &= 0xB
-            },
-            Key::Start => {
-                self.keys[0] &= 0x7
-            },
-            Key::Up => {
-                self.keys[1] &= 0xB
-            },
-            Key::Down => {
-                self.keys[1] &= 0x7
-            },
-            Key::Right => {
-                self.keys[1] &= 0xE
-            },
-            Key::Left => {
-                self.keys[1] &= 0xD
-            }
+            Key::Right  => { self.keys[1] &= 0xE },
+            Key::Left   => { self.keys[1] &= 0xD },
+            Key::Up     => { self.keys[1] &= 0xB },
+            Key::Down   => { self.keys[1] &= 0x7 },
+            Key::A      => { self.keys[0] &= 0xE },
+            Key::B      => { self.keys[0] &= 0xD },
+            Key::Select => { self.keys[0] &= 0xB },
+            Key::Start  => { self.keys[0] &= 0x7 },
         }
 
         self.interrupt |= 0x10;
@@ -82,30 +66,14 @@ impl Keypad {
 
     pub fn key_up(&mut self, key: Key) {
         match key {
-            Key::A => {
-                self.keys[0] |= 0x1
-            },
-            Key::B => {
-                self.keys[0] |= 0x2
-            },
-            Key::Select => {
-                self.keys[0] |= 0x8
-            },
-            Key::Start => {
-                self.keys[0] |= 0x4
-            },
-            Key::Up => {
-                self.keys[1] |= 0x8
-            },
-            Key::Down => {
-                self.keys[1] |= 0x4
-            },
-            Key::Right => {
-                self.keys[1] |= 0x1
-            },
-            Key::Left => {
-                self.keys[1] |= 0x2
-            }
+            Key::Right  => { self.keys[1] |= 0x1 },
+            Key::Left   => { self.keys[1] |= 0x2 },
+            Key::Up     => { self.keys[1] |= 0x4 },
+            Key::Down   => { self.keys[1] |= 0x8 },
+            Key::A      => { self.keys[0] |= 0x1 },
+            Key::B      => { self.keys[0] |= 0x2 },
+            Key::Select => { self.keys[0] |= 0x5 },
+            Key::Start  => { self.keys[0] |= 0x8 },
         }
     }
 }
