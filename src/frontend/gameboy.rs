@@ -31,6 +31,7 @@ impl Gameboy {
 
             self.cpu.step();
             self.display.draw(self.cpu.get_gpu_pixels());
+            self.cpu.wait();
         }
     }
 

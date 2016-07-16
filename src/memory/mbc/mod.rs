@@ -3,11 +3,12 @@ use std::fs::File;
 use std::path;
 
 mod mbc0;
+mod mbc1;
 
 const TITLE_START : u16 = 0x134;
 const TITLE_SIZE : u16 = 11;
 
-pub trait MBC : Send {
+pub trait MBC {
     fn read_rom(&self, a: u16) -> u8;
     fn write_rom(&mut self, a: u16, v: u8);
 
@@ -47,7 +48,23 @@ pub fn load_mbc(rom_file: path::PathBuf) -> Result<Box<MBC+'static>, String> {
             let mbc = mbc0::MBC0::new(data);
             Ok(Box::new(mbc) as Box<MBC>)
         },
+
+        0x01 ... 0x03 =>  {
+            let mbc = mbc1::MBC1::new(data);
+            Ok(Box::new(mbc) as Box<MBC>)
+        },
+
         _ => Err(format!("Unsupported MBC: {0:x}", mbc_type)),
+    }
+}
+
+fn ram_size(v: u8) -> usize {
+    match v {
+        1 => 0x800,
+        2 => 0x2000,
+        3 => 0x8000,
+        4 => 0x20000,
+        _ => 0,
     }
 }
 

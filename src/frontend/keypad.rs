@@ -17,16 +17,14 @@ pub enum Key {
 
 impl Keypad {
     pub fn new() -> Keypad {
-        let mut keypad = Keypad {
+        Keypad {
             keys: [
                 0x0F,
                 0x0F
             ],
             column: 0,
             interrupt: 0
-        };
-
-        keypad
+        }
     }
 
     pub fn rb(&self) -> u8 {

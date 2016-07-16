@@ -11,7 +11,9 @@ pub struct Z80 {
     halted: bool,
     ime: bool,
     setdi: u32,
-    setei: u32
+    setei: u32,
+    ticks: u32,
+    cpu_speed: u32
 }
 
 impl Z80 {
@@ -22,30 +24,32 @@ impl Z80 {
             halted: false,
             ime: true,
             setei: 0,
-            setdi: 0
+            setdi: 0,
+            ticks: 0,
+            cpu_speed: (CPU_SPEED / 1000 * 16) as u32
         }
     }
 
     pub fn step(&mut self) {
-        let mut cpu_ticks = 0;
-
-        let cpu_speed = (CPU_SPEED / 1000 * 16) as u32;
-
-        while cpu_ticks < cpu_speed {
+        while self.ticks < self.cpu_speed {
             let op_ticks = self.docycle();
             self.mmu.do_cycle(op_ticks * 4);
 
-            cpu_ticks += op_ticks;
+            self.ticks += op_ticks;
         }
+    }
 
-        cpu_ticks -= cpu_speed;
+    pub fn wait(&mut self) {
+        self.ticks -= self.cpu_speed
     }
 
     fn docycle(&mut self) -> u32 {
         self.updateime();
 
         match self.interrupt() {
-            0 => { 0 },
+            0 => {
+                0
+            },
             n => {
                 n
             },
@@ -56,7 +60,7 @@ impl Z80 {
             return self.execute(opcode);
         }
 
-        0
+        1
     }
 
     fn updateime(&mut self) {
