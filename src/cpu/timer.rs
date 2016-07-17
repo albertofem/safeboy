@@ -23,7 +23,7 @@ impl Timer {
         }
     }
 
-    pub fn rb(&self, a: u16) -> u8 {
+    pub fn read_byte(&self, a: u16) -> u8 {
         match a {
             0xFF04 => self.divider,
             0xFF05 => self.counter,
@@ -36,7 +36,7 @@ impl Timer {
         }
     }
 
-    pub fn wb(&mut self, a: u16, v: u8) {
+    pub fn write_byte(&mut self, a: u16, v: u8) {
         match a {
             0xFF04 => { self.divider = 0; },
             0xFF05 => { self.counter = v; },

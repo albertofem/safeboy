@@ -23,10 +23,12 @@ pub struct MMU {
     /// * It's memory mapped I/O at address space 0xFF00-0xFFFE
     high_ram: [u8; HIGH_RAM_SIZE],
 
-    /// Interrupt master Enable (IME) register
+    /// Interrupt enable (IE) register
     ///
-    /// * This is a special register used to enable/disable interrupts
-    /// * If this bit is set, then no interrupts are handled by the CPU
+    /// The interrupt stored here is the one that the CPU will
+    /// handle in case the IME is enabled (set to 1).
+    ///
+    /// See the CPU `interrupt_master_enable` documentation for more info
     pub interrupt_enable: u8,
 
     /// Interrupt request register Flag (IF)
@@ -97,43 +99,43 @@ impl MMU {
 
     fn reset(&mut self) {
         // Timer counter (TIMA)
-        self.wb(0xFF05, 0);
+        self.write_byte(0xFF05, 0);
 
         // Timer modulo (TMA)
-        self.wb(0xFF06, 0);
+        self.write_byte(0xFF06, 0);
 
         // Timer control (TAC)
-        self.wb(0xFF07, 0);
+        self.write_byte(0xFF07, 0);
 
         // LCD control (LCDC)
-        self.wb(0xFF40, 0x91);
+        self.write_byte(0xFF40, 0x91);
 
         // LCD position (Scroll Y) (SCY)
-        self.wb(0xFF42, 0);
+        self.write_byte(0xFF42, 0);
 
         // LCD position (Scroll X) (SCX)
-        self.wb(0xFF43, 0);
+        self.write_byte(0xFF43, 0);
 
         // LCD Y-coordinate (LY)
-        self.wb(0xFF44, 0);
+        self.write_byte(0xFF44, 0);
 
         // LCD LY Compare (LYC)
-        self.wb(0xFF45, 0);
+        self.write_byte(0xFF45, 0);
 
         // LCD Window Y Position
-        self.wb(0xFF4A, 0);
+        self.write_byte(0xFF4A, 0);
 
         // LCD Window X Position
-        self.wb(0xFF4B, 0);
+        self.write_byte(0xFF4B, 0);
 
         // BG Palette (BGP)
-        self.wb(0xFF47, 0xFC);
+        self.write_byte(0xFF47, 0xFC);
 
         // Spritte Palette 0
-        self.wb(0xFF48, 0xFF);
+        self.write_byte(0xFF48, 0xFF);
 
         // Spritte Palette 1
-        self.wb(0xFF49, 0xFF);
+        self.write_byte(0xFF49, 0xFF);
     }
 
     /// Steps the MMU
@@ -166,7 +168,7 @@ impl MMU {
     /// value found in the address space. Some addresses are mapped
     /// to GPU, timer, keypad, etc. addresses, but this is handled
     /// internally
-    pub fn rb(&mut self, address: u16) -> u8 {
+    pub fn read_byte(&mut self, address: u16) -> u8 {
         match address {
 
             0x0000 ... 0x7FFF => {
@@ -174,7 +176,7 @@ impl MMU {
             },
 
             0x8000 ... 0x9FFF => {
-                self.gpu.rb(address)
+                self.gpu.read_byte(address)
             },
 
             0xA000 ... 0xBFFF => {
@@ -190,11 +192,11 @@ impl MMU {
             },
 
             0xFE00 ... 0xFE9F => {
-                self.gpu.rb(address)
+                self.gpu.read_byte(address)
             },
 
             0xFF00 => {
-                self.keypad.rb()
+                self.keypad.read_byte()
             },
 
             0xFF01 ... 0xFF02 => {
@@ -203,7 +205,7 @@ impl MMU {
             },
 
             0xFF04 ... 0xFF07 => {
-                self.timer.rb(address)
+                self.timer.read_byte(address)
             },
 
             0xFF0F => {
@@ -220,11 +222,11 @@ impl MMU {
             },
 
             0xFF40 ... 0xFF4F => {
-                self.gpu.rb(address)
+                self.gpu.read_byte(address)
             },
 
             0xFF68 ... 0xFF6B => {
-                self.gpu.rb(address)
+                self.gpu.read_byte(address)
             },
 
             0xFF80 ... 0xFFFE => {
@@ -239,19 +241,19 @@ impl MMU {
         }
     }
 
-    pub fn rw(&mut self, address: u16) -> u16 {
-        (self.rb(address) as u16) |
-            ((self.rb(address + 1) as u16) << 8)
+    pub fn read_word(&mut self, address: u16) -> u16 {
+        (self.read_byte(address) as u16) |
+            ((self.read_byte(address + 1) as u16) << 8)
     }
 
-    pub fn wb(&mut self, address: u16, value: u8) {
+    pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
             0x0000 ... 0x7FFF =>  {
                 self.mbc.write_rom(address, value)
             },
 
             0x8000 ... 0x9FFF => {
-                self.gpu.wb(address, value)
+                self.gpu.write_byte(address, value)
             },
 
             0xA000 ... 0xBFFF => {
@@ -267,15 +269,15 @@ impl MMU {
             },
 
             0xFE00 ... 0xFE9F => {
-                self.gpu.wb(address, value)
+                self.gpu.write_byte(address, value)
             },
 
             0xFF00 => {
-                self.keypad.wb(value)
+                self.keypad.write_byte(value)
             },
 
             0xFF04 ... 0xFF07 => {
-                self.timer.wb(address, value)
+                self.timer.write_byte(address, value)
             },
 
             0xFF10 ... 0xFF3F => {
@@ -287,11 +289,11 @@ impl MMU {
             },
 
             0xFF40 ... 0xFF4F => {
-                self.gpu.wb(address, value)
+                self.gpu.write_byte(address, value)
             },
 
             0xFF68 ... 0xFF6B => {
-                self.gpu.wb(address, value)
+                self.gpu.write_byte(address, value)
             },
 
             0xFF0F => {
@@ -314,16 +316,16 @@ impl MMU {
         };
     }
 
-    pub fn ww(&mut self, address: u16, value: u16) {
-        self.wb(address, (value & 0xFF) as u8);
-        self.wb(address + 1, (value >> 8) as u8);
+    pub fn write_word(&mut self, address: u16, value: u16) {
+        self.write_byte(address, (value & 0xFF) as u8);
+        self.write_byte(address + 1, (value >> 8) as u8);
     }
 
     fn oamdma(&mut self, value: u8) {
         let base = (value as u16) << 8;
         for i in 0 .. 0xA0 {
-            let b = self.rb(base + i);
-            self.wb(0xFE00 + i, b);
+            let b = self.read_byte(base + i);
+            self.write_byte(0xFE00 + i, b);
         }
     }
 }

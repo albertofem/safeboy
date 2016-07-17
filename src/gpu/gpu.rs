@@ -1,7 +1,9 @@
 
-/// Video Ram size,
-const VRAM_SIZE: usize = 0x8000;
-const VOAM_SIZE: usize = 0xA0;
+/// Video Ram size, 16 kb
+const VIDEO_RAM_SIZE: usize = 0x8000;
+
+/// Object Attribute Memory size, 160 bytes (4 bits per sprite at 40 sprites)
+const VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE: usize = 0xA0;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -18,14 +20,6 @@ enum Mode {
     VerticalBlank = 1,
     OAMRead = 2,
     VRAMRead = 3
-}
-
-struct Control {
-    lcd_display_enable: bool,
-    window_tile_map_display_base_address_base_address: u16,
-    window_display_enable: bool,
-    bg_window_tile_data_base_address: u16,
-    background_tile_data_base_address: u16
 }
 
 /// Graphic Processing Unit
@@ -45,7 +39,7 @@ pub struct GPU {
     ///
     /// This is a bit indicating whether the display is enabled
     /// or not, used by the games to disable it. During the disabled
-    /// period, the screen is blank and VRAM and OAM can be accessed freely
+    /// period, the screen is blank and VIDEO_RAM and OAM can be accessed freely
     lcd_display_enable: bool,
 
     /// Window tilemap display base address
@@ -158,24 +152,53 @@ pub struct GPU {
     /// Stores the window X-coordinate position.
     window_position_x: u8,
 
-    palbr: u8,
-    pal0r: u8,
-    pal1r: u8,
+    /// Background-Window / OBJ palette shades data
+    ///
+    /// These three registers assigns shades of grey (GameBoy LCD supports 4
+    /// shades of grey) in order to be used by the BG, 
+    /// Window and OBJ sprites respectively
+    bg_palette_data: u8,
+    obj_0_palette_data: u8,
+    obj_1_palette_data: u8,
 
-    palb: [u8; 4],
-    pal0: [u8; 4],
-    pal1: [u8; 4],
+    /// Background-Window / OBJ palette colors
+    ///
+    /// These three internal variables stores the corresponding RGB
+    /// values for the different shades of gray that stands as:
+    ///
+    /// 0 -> White -> 255
+    /// 1 -> Light gray -> 192
+    /// 2 -> Dark gray -> 96
+    /// 4 -> Black -> 0
+    bg_palette_colors: [u8; 4],
+    obj_0_palette_colors: [u8; 4],
+    obj_1_palette_colors: [u8; 4],
 
-    vram: [u8; VRAM_SIZE],
-    voam: [u8; VOAM_SIZE],
+    /// Video RAM
+    ///
+    /// This is where the Background, Window and Tile data
+    /// is stored for the GPU to work with.
+    ///
+    /// It has two address ranges:
+    ///
+    /// * 8000-97FF -> Contains Tile data
+    /// * 9800-9FFF -> Background and Window data (used indistinctly)
+    video_ram: [u8; VIDEO_RAM_SIZE],
 
-    bgprio: [PrioType; WIDTH],
+    /// Object Attribute Memory (OAM)
+    ///
+    /// This is where data about the sprites is stored. It contains
+    /// 160 bytes of data, which correspond with 40 sprite attributes (4
+    /// bits per sprite)
+    video_object_attribute_memory: [u8; VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE],
+
+    bg_priority: [PrioType; WIDTH],
 
     /// GPU Interrupt
     ///
     /// The GPU has 2 interrupts:
     ///
-    /// * When the V-Blank period starts, during this period the VRAM is accessible
+    /// * When the V-Blank period starts, during this period the VIDEO_RAM is accessible
     /// *
     pub interrupt: u8,
     pub data: Vec<u8>
@@ -204,16 +227,16 @@ impl GPU {
             scroll_position_x: 0,
             window_position_y: 0,
             window_position_x: 0,
-            palbr: 0,
-            pal0r: 0,
-            pal1r: 1,
-            palb: [0; 4],
-            pal0: [0; 4],
-            pal1: [0; 4],
-            vram: [0; VRAM_SIZE],
-            voam: [0; VOAM_SIZE],
+            bg_palette_data: 0,
+            obj_0_palette_data: 0,
+            obj_1_palette_data: 1,
+            bg_palette_colors: [0; 4],
+            obj_0_palette_colors: [0; 4],
+            obj_1_palette_colors: [0; 4],
+            video_ram: [0; VIDEO_RAM_SIZE],
+            video_object_attribute_memory: [0; VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE],
             data: vec![0; WIDTH * HEIGHT * 3],
-            bgprio: [PrioType::Normal; WIDTH],
+            bg_priority: [PrioType::Normal; WIDTH],
             interrupt: 0,
         }
     }
@@ -264,16 +287,132 @@ impl GPU {
                     if self.mode != Mode::OAMRead {
                         self.change_mode(Mode::OAMRead);
                     }
-                } else if self.clock <= (80 + 172) { // 252 cycles
+                } else if self.clock <= (80 + 172) {
                     if self.mode != Mode::VRAMRead {
                         self.change_mode(Mode::VRAMRead);
                     }
-                } else { // the remaining 204
+                } else {
                     if self.mode != Mode::HorizontalBlank {
                         self.change_mode(Mode::HorizontalBlank);
                     }
                 }
             }
+        }
+    }
+
+    /// Read byte from the GPU
+    ///
+    /// Like the MMU, the GPU maps a range of addresses
+    /// to it's internal state. You can see more info on
+    /// each of the address ranges commented in the code.
+    pub fn read_byte(&self, address: u16) -> u8 {
+        match address {
+            0x8000 ... 0x9FFF => self.video_ram                     [address as usize & 0x1FFF],
+
+            0xFE00 ... 0xFE9F => self.video_object_attribute_memory [address as usize - 0xFE00],
+
+            0xFF40 => {
+                (if self.lcd_display_enable                                 { 0x80 } else { 0 })    |
+                    (if self.window_tile_map_display_base_address == 0x9C00 { 0x40 } else { 0 })    |
+                    (if self.window_display_enable                          { 0x20 } else { 0 })    |
+                    (if self.bg_window_tile_data_base_address == 0x8000     { 0x10 } else { 0 })    |
+                    (if self.bg_tile_map_base_address == 0x9C00             { 0x08 } else { 0 })    |
+                    (if self.sprite_size == 16                              { 0x04 } else { 0 })    |
+                    (if self.sprite_enable                                  { 0x02 } else { 0 })    |
+                    (if self.background_display_enable                      { 0x01 } else { 0 })
+            },
+
+            0xFF41 => {
+                (if self.lyc_interrupt                  { 0x40 } else { 0 })    |
+                    (if self.oam_interrupt              { 0x20 } else { 0 })    |
+                    (if self.vertical_blank_interrupt   { 0x10 } else { 0 })    |
+                    (if self.horizontal_blank_interrupt { 0x08 } else { 0 })    |
+                    (if self.line == self.lyc           { 0x04 } else { 0 })    |
+
+                    self.mode as u8
+            },
+
+            0xFF42 => self.scroll_position_y,
+
+            0xFF43 => self.scroll_position_x,
+
+            0xFF44 => self.line,
+
+            0xFF45 => self.lyc,
+
+            0xFF46 => 0, // Write only
+
+            0xFF47 => self.bg_palette_data,
+
+            0xFF48 => self.obj_0_palette_data,
+
+            0xFF49 => self.obj_1_palette_data,
+
+            0xFF4A => self.window_position_y,
+
+            0xFF4B => self.window_position_x,
+
+            _ => {
+                println!("GPU does not handle read {:04X}", address);
+                0
+            },
+        }
+    }
+
+    /// Write byte to the GPU
+    ///
+    /// Also, like the MMU, the GPU changes it's internal state
+    /// by writing some value into it. The range of addresses will
+    /// perform a variety of changes, described on the code.
+    pub fn write_byte(&mut self, address: u16, value: u8) {
+        match address {
+            0x8000 ... 0x9FFF => self.video_ram[address as usize & 0x1FFF] = value,
+
+            0xFE00 ... 0xFE9F => self.video_object_attribute_memory[address as usize - 0xFE00] = value,
+
+            0xFF40 => {
+                self.handle_gpu_control(value)
+            },
+
+            0xFF41 => {
+                self.lyc_interrupt = value & 0x40 == 0x40;
+                self.oam_interrupt = value & 0x20 == 0x20;
+                self.vertical_blank_interrupt = value & 0x10 == 0x10;
+                self.horizontal_blank_interrupt = value & 0x08 == 0x08;
+            },
+
+            0xFF42 => self.scroll_position_y = value,
+
+            0xFF43 => self.scroll_position_x = value,
+
+            0xFF44 => {},
+
+            0xFF45 => self.lyc = value,
+
+            0xFF46 => panic!("0xFF46 should be handled by MMU"),
+
+            0xFF47 => {
+                self.bg_palette_data = value;
+                self.update_palette_colors();
+            },
+
+            0xFF48 => {
+                self.obj_0_palette_data = value;
+                self.update_palette_colors();
+            },
+
+            0xFF49 => {
+                self.obj_1_palette_data = value;
+                self.update_palette_colors();
+            },
+
+            0xFF4A => self.window_position_y = value,
+
+            0xFF4B => self.window_position_x = value,
+
+            _ => {
+                println!("GPU does not handle write {:04X}", address)
+            },
         }
     }
 
@@ -288,7 +427,7 @@ impl GPU {
 
         if match self.mode {
             Mode::HorizontalBlank => {
-                self.renderscan();
+                self.render_scan();
                 self.horizontal_blank_interrupt
             },
             Mode::VerticalBlank => {
@@ -302,100 +441,15 @@ impl GPU {
         }
     }
 
-    pub fn rb(&self, a: u16) -> u8 {
-        match a {
-            0x8000 ... 0x9FFF => self.vram[(a as usize & 0x1FFF)],
-            0xFE00 ... 0xFE9F => self.voam[a as usize - 0xFE00],
-
-            0xFF40 => {
-                (if self.lcd_display_enable { 0x80 } else { 0 }) |
-                    (if self.window_tile_map_display_base_address == 0x9C00 { 0x40 } else { 0 }) |
-                    (if self.window_display_enable { 0x20 } else { 0 }) |
-                    (if self.bg_window_tile_data_base_address == 0x8000 { 0x10 } else { 0 }) |
-                    (if self.bg_tile_map_base_address == 0x9C00 { 0x08 } else { 0 }) |
-                    (if self.sprite_size == 16 { 0x04 } else { 0 }) |
-                    (if self.sprite_enable { 0x02 } else { 0 }) |
-                    (if self.background_display_enable { 0x01 } else { 0 })
-            },
-
-            0xFF41 => {
-                (if self.lyc_interrupt { 0x40 } else { 0 }) |
-                    (if self.oam_interrupt { 0x20 } else { 0 }) |
-                    (if self.vertical_blank_interrupt { 0x10 } else { 0 }) |
-                    (if self.horizontal_blank_interrupt { 0x08 } else { 0 }) |
-                    (if self.line == self.lyc { 0x04 } else { 0 }) |
-                    self.mode as u8
-            },
-
-            0xFF42 => self.scroll_position_y,
-            0xFF43 => self.scroll_position_x,
-            0xFF44 => self.line,
-            0xFF45 => self.lyc,
-            0xFF46 => 0, // Write only
-            0xFF47 => self.palbr,
-            0xFF48 => self.pal0r,
-            0xFF49 => self.pal1r,
-            0xFF4A => self.window_position_y,
-            0xFF4B => self.window_position_x,
-            _ => {
-                println!("GPU does not handle read {:04X}", a); 0
-            },
-        }
+    fn read_byte_from_video_ram(&self, a: u16) -> u8 {
+        self.video_ram[a as usize & 0x1FFF]
     }
 
-    fn rbvram0(&self, a: u16) -> u8 {
-        if a < 0x8000 || a >= 0xA000 {
-            panic!("Shouldn't have used rbvram0");
-        }
-
-        self.vram[a as usize & 0x1FFF]
-    }
-
-    pub fn wb(&mut self, address: u16, value: u8) {
-        match address {
-            0x8000 ... 0x9FFF => self.vram[address as usize & 0x1FFF] = value,
-
-            0xFE00 ... 0xFE9F => self.voam[address as usize - 0xFE00] = value,
-
-            0xFF40 => {
-                self.handle_gpu_control(value)
-            },
-
-            0xFF41 => {
-                self.lyc_interrupt = value & 0x40 == 0x40;
-                self.oam_interrupt = value & 0x20 == 0x20;
-                self.vertical_blank_interrupt = value & 0x10 == 0x10;
-                self.horizontal_blank_interrupt = value & 0x08 == 0x08;
-            },
-
-            0xFF42 => self.scroll_position_y = value,
-            0xFF43 => self.scroll_position_x = value,
-            0xFF44 => {}, // Read-only
-            0xFF45 => self.lyc = value,
-            0xFF46 => panic!("0xFF46 should be handled by MMU"),
-
-            0xFF47 => {
-                self.palbr = value; self.update_pal();
-            },
-
-            0xFF48 => {
-                self.pal0r = value; self.update_pal();
-            },
-
-            0xFF49 => {
-                self.pal1r = value;
-                self.update_pal();
-            },
-
-            0xFF4A => self.window_position_y = value,
-            0xFF4B => self.window_position_x = value,
-
-            _ => {
-                println!("GPU does not handle write {:04X}", address)
-            },
-        }
-    }
-
+    /// Handle the GPU STAT / Control instruction
+    ///
+    /// This operation sets the GPU status, changing several internal
+    /// variables and registers that will later be used to perform
+    /// a variety of operations. See each property documentation for more info
     fn handle_gpu_control(&mut self, value: u8) {
         let orig_lcd_display_enable = self.lcd_display_enable;
 
@@ -461,15 +515,15 @@ impl GPU {
         }
     }
 
-    fn update_pal(&mut self) {
+    fn update_palette_colors(&mut self) {
         for i in 0 .. 4 {
-            self.palb[i] = GPU::get_monochrome_pal_val(self.palbr, i);
-            self.pal0[i] = GPU::get_monochrome_pal_val(self.pal0r, i);
-            self.pal1[i] = GPU::get_monochrome_pal_val(self.pal1r, i);
+            self.bg_palette_colors[i] = GPU::get_monochrome_rgb_value(self.bg_palette_data, i);
+            self.obj_0_palette_colors[i] = GPU::get_monochrome_rgb_value(self.obj_0_palette_data, i);
+            self.obj_1_palette_colors[i] = GPU::get_monochrome_rgb_value(self.obj_1_palette_data, i);
         }
     }
 
-    fn get_monochrome_pal_val(value: u8, index: usize) -> u8 {
+    fn get_monochrome_rgb_value(value: u8, index: usize) -> u8 {
         match (value >> 2*index) & 0x03 {
             0 => 255,
             1 => 192,
@@ -478,23 +532,23 @@ impl GPU {
         }
     }
 
-    fn renderscan(&mut self) {
+    fn render_scan(&mut self) {
         for x in 0 .. WIDTH {
-            self.setcolor(x, 255);
-            self.bgprio[x] = PrioType::Normal;
+            self.set_color(x, 255);
+            self.bg_priority[x] = PrioType::Normal;
         }
 
-        self.draw_bg();
+        self.draw_background();
         self.draw_sprites();
     }
 
-    fn setcolor(&mut self, x: usize, color: u8) {
+    fn set_color(&mut self, x: usize, color: u8) {
         self.data[self.line as usize * WIDTH * 3 + x * 3 + 0] = color;
         self.data[self.line as usize * WIDTH * 3 + x * 3 + 1] = color;
         self.data[self.line as usize * WIDTH * 3 + x * 3 + 2] = color;
     }
 
-    fn draw_bg(&mut self) {
+    fn draw_background(&mut self) {
         let drawbg = self.background_display_enable;
 
         let window_position_y =
@@ -533,7 +587,7 @@ impl GPU {
                 continue;
             };
 
-            let tilenr: u8 = self.rbvram0(tilemapbase + tiley * 32 + tilex);
+            let tilenr: u8 = self.read_byte_from_video_ram(tilemapbase + tiley * 32 + tilex);
 
             let tileaddress = self.bg_window_tile_data_base_address
                 + (if self.bg_window_tile_data_base_address == 0x8000 {
@@ -544,7 +598,10 @@ impl GPU {
 
             let a0 = tileaddress + (pixely * 2);
 
-            let (b1, b2) = (self.rbvram0(a0), self.rbvram0(a0 + 1));
+            let (b1, b2) = (
+                self.read_byte_from_video_ram(a0),
+                self.read_byte_from_video_ram(a0 + 1)
+            );
 
             let xbit = 7 - pixelx;
 
@@ -563,12 +620,16 @@ impl GPU {
                     0
                 };
 
-            self.bgprio[x] =
-                if colnr == 0 { PrioType::Color0 }
-                    else { PrioType::Normal };
+            self.bg_priority[x] =
+                if colnr == 0 {
+                    PrioType::Color0
+                } else {
+                    PrioType::Normal
+                };
 
-            let color = self.palb[colnr];
-            self.setcolor(x, color);
+            let color = self.bg_palette_colors[colnr];
+
+            self.set_color(x, color);
         }
     }
 
@@ -581,10 +642,10 @@ impl GPU {
             let i = 39 - index;
             let spriteaddr = 0xFE00 + (i as u16) * 4;
 
-            let spritey = self.rb(spriteaddr + 0) as u16 as i32 - 16;
-            let spritex = self.rb(spriteaddr + 1) as u16 as i32 - 8;
+            let spritey = self.read_byte(spriteaddr + 0) as u16 as i32 - 16;
+            let spritex = self.read_byte(spriteaddr + 1) as u16 as i32 - 8;
 
-            let tilenum = (self.rb(spriteaddr + 2) & (
+            let tilenum = (self.read_byte(spriteaddr + 2) & (
                 if self.sprite_size == 16 {
                     0xFE
                 } else {
@@ -592,8 +653,8 @@ impl GPU {
                 }
             )) as u16;
 
-            let flags = self.rb(spriteaddr + 3) as usize;
-            let usepal1: bool = flags & (1 << 4) != 0;
+            let flags = self.read_byte(spriteaddr + 3) as usize;
+            let useobj_1_palette_colors: bool = flags & (1 << 4) != 0;
             let xflip: bool = flags & (1 << 5) != 0;
             let yflip: bool = flags & (1 << 6) != 0;
             let belowbg: bool = flags & (1 << 7) != 0;
@@ -617,7 +678,11 @@ impl GPU {
                 };
 
             let tileaddress = 0x8000u16 + tilenum * 16 + tiley * 2;
-            let (b1, b2) = (self.rbvram0(tileaddress), self.rbvram0(tileaddress + 1));
+
+            let (b1, b2) = (
+                self.read_byte_from_video_ram(tileaddress),
+                self.read_byte_from_video_ram(tileaddress + 1)
+            );
 
             for x in 0 .. 8 {
                 if spritex + x < 0 || spritex + x >= (WIDTH as i32) {
@@ -651,17 +716,17 @@ impl GPU {
                     continue
                 }
 
-                if belowbg && self.bgprio[(spritex + x) as usize] != PrioType::Color0 {
+                if belowbg && self.bg_priority[(spritex + x) as usize] != PrioType::Color0 {
                     continue
                 }
 
-                let color = if usepal1 {
-                    self.pal1[colnr]
+                let color = if useobj_1_palette_colors {
+                    self.obj_1_palette_colors[colnr]
                 } else {
-                    self.pal0[colnr]
+                    self.obj_0_palette_colors[colnr]
                 };
 
-                self.setcolor((spritex + x) as usize, color);
+                self.set_color((spritex + x) as usize, color);
             }
         }
     }

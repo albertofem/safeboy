@@ -3,16 +3,74 @@ use memory::mmu::MMU;
 use cpu::registers::CpuFlag::{C, N, H, Z};
 use frontend::keypad::Key;
 
+/// CPU Speed, set a 4194304 Hz (taken from the original hardware)
 const CPU_SPEED: u32 = 4_194_304;
 
+/// Z80 CPU
+///
+/// This is the brain of the GameBoy, where operations sent
+/// by the game code are handled and it's internal state is changed
+///
+/// It provides a comprehensive access to the MMU and some operations
+/// to control the state of the CPU (halted, etc.).
 pub struct Z80 {
+    /// Memory Management Unit
+    ///
+    /// This is where all game data is stored and manipulated, including
+    /// the GPU, timer, keypad, etc. data. Opcodes call specific locations
+    /// of this MMU in order to retrieve info or mutate it.
+    ///
+    /// More info in the module itself.
     mmu: MMU,
+
+    /// Registers
+    ///
+    /// These are the main CPU register storage. These are a very fast
+    /// storage location used by the CPU to perform basic operations
+    /// with bits.
+    ///
+    /// More info the module itself.
     registers: RegisterSet,
+
+    /// Halted flag
+    ///
+    /// This indicates whether the CPU is halted or not. It's set
+    /// by an opcode, and only remains until an interrupt occurs (use for low battery)
     halted: bool,
-    ime: bool,
-    setdi: u32,
-    setei: u32,
-    ticks: u32,
+
+    /// Interrupt master enable (INTERRUPT_MASTER_ENABLE)
+    ///
+    /// This is a internal variable we use to enable or disable
+    /// interrupts that are defined in the MMU INTERRUPT_MASTER_ENABLE (0xFFF).
+    /// 
+    /// 0 -> Disable all interrupts
+    /// 1 -> Enable interrupts from the IE in MMU
+    interrupt_master_enable: bool,
+
+    /// Set disable interrupt
+    ///
+    /// Whether we need to disable interrupts. This is set during
+    /// an opcode and updates the CPU interrupt master enable flag
+    /// in the next cycle of the CPU
+    set_disable_interrupts: u32,
+    
+    /// Set enable interrupt
+    /// 
+    /// Inverse of the set disable interrupt. It has a different opcode
+    set_enable_interrupts: u32,
+    
+    /// CPU internal clock
+    /// 
+    /// This is the main CPU clock, used to provide time limitation
+    /// for opcodes in order to emulate original hardware
+    clock: u32,
+
+    /// CPU speed value
+    ///
+    /// Stores the CPU speed, which is calculated on initialization
+    /// from the CPU_SPEED constant (taken from the original hardware)
+    ///
+    /// This is used to step the CPU at a correct speed
     cpu_speed: u32
 }
 
@@ -22,29 +80,44 @@ impl Z80 {
             registers: RegisterSet::new(),
             mmu: MMU::new(rom_file),
             halted: false,
-            ime: true,
-            setei: 0,
-            setdi: 0,
-            ticks: 0,
+            interrupt_master_enable: true,
+            set_enable_interrupts: 0,
+            set_disable_interrupts: 0,
+            clock: 0,
             cpu_speed: (CPU_SPEED / 1000 * 16) as u32
         }
     }
 
+    /// Steps the CPU
+    ///
+    /// Notice that the clock ticks are taken from observation
+    /// from the original CPU, and these are approximate, at exact
+    /// cycle time is tied to special hardware constraints that
+    /// are not normally reproduced in emulators (hence not-100% accuracy)
     pub fn step(&mut self) {
-        while self.ticks < self.cpu_speed {
-            let op_ticks = self.docycle();
-            self.mmu.step(op_ticks * 4);
+        while self.clock < self.cpu_speed {
+            // cycle the CPU and obtain how much ticks
+            // the operation took (used to limit the emulation speed)
+            let op_clock = self.cycle();
+            self.clock += op_clock;
 
-            self.ticks += op_ticks;
+            // steps the MMU, this will turn also steps in
+            // GPU, keypad, timer, etc.
+            self.mmu.step(op_clock * 4);
         }
     }
 
+    /// Wait for executing
+    ///
+    /// This is to limit the amount of cycles in the CPU
+    /// by the actual CPU physical speed. Because the host CPU
+    /// is faster than the original hardware, we need this limitation
     pub fn wait(&mut self) {
-        self.ticks -= self.cpu_speed
+        self.clock -= self.cpu_speed
     }
 
-    fn docycle(&mut self) -> u32 {
-        self.updateime();
+    fn cycle(&mut self) -> u32 {
+        self.update_interrupt_master_enable();
 
         match self.interrupt() {
             0 => {
@@ -63,27 +136,32 @@ impl Z80 {
         1
     }
 
-    fn updateime(&mut self) {
-        self.setdi = match self.setdi {
+    fn update_interrupt_master_enable(&mut self) {
+        self.set_disable_interrupts = match self.set_disable_interrupts {
             2 => 1,
             1 => {
-                self.ime = false;
+                self.interrupt_master_enable = false;
                 0
             },
             _ => 0,
         };
-        self.setei = match self.setei {
+
+        self.set_enable_interrupts = match self.set_enable_interrupts {
             2 => 1,
             1 => {
-                self.ime = true;
+                self.interrupt_master_enable = true;
                 0
             },
             _ => 0,
         };
     }
 
+    /// Handles interrupts
+    ///
+    /// This function checks for various interrupt sources (including MMU)
+    /// in order to determine whether an interrupt ocurred.
     fn interrupt(&mut self) -> u32 {
-        if self.ime == false && self.halted == false {
+        if self.interrupt_master_enable == false && self.halted == false {
             return 0
         }
 
@@ -94,7 +172,7 @@ impl Z80 {
         }
 
         self.halted = false;
-        self.ime = false;
+        self.interrupt_master_enable = false;
 
         let n = triggered.trailing_zeros();
 
@@ -110,29 +188,30 @@ impl Z80 {
 
         self.registers.pc = 0x0040 | ((n as u16) << 3);
 
+        // this operation takes 4 cycles
         return 4
     }
 
     fn push_stack(&mut self, value: u16) {
         self.registers.sp -= 2;
-        self.mmu.ww(self.registers.sp, value);
+        self.mmu.write_word(self.registers.sp, value);
     }
 
     fn pop_stack(&mut self) -> u16 {
-        let res = self.mmu.rw(self.registers.sp);
+        let res = self.mmu.read_word(self.registers.sp);
         self.registers.sp += 2;
         res
     }
 
     fn read_byte(&mut self) -> u8 {
-        let b = self.mmu.rb(self.registers.pc);
+        let b = self.mmu.read_byte(self.registers.pc);
         self.registers.pc += 1;
 
         b
     }
 
     fn read_word(&mut self) -> u16 {
-        let w = self.mmu.rw(self.registers.pc);
+        let w = self.mmu.read_word(self.registers.pc);
         self.registers.pc += 2;
         w
     }
@@ -152,7 +231,7 @@ impl Z80 {
             },
 
             0x02 => {
-                self.mmu.wb(self.registers.bc(), self.registers.a);
+                self.mmu.write_byte(self.registers.bc(), self.registers.a);
                 2
             },
 
@@ -163,12 +242,12 @@ impl Z80 {
             },
 
             0x04 => {
-                self.registers.b = self.alu_inc(oldregs.b);
+                self.registers.b = self.alu_increase(oldregs.b);
                 1
             },
 
             0x05 => {
-                self.registers.b = self.alu_dec(oldregs.b);
+                self.registers.b = self.alu_decrease(oldregs.b);
                 1
             },
             
@@ -185,7 +264,7 @@ impl Z80 {
 
             0x08 => {
                 let a = self.read_word();
-                self.mmu.ww(a, self.registers.sp);
+                self.mmu.write_word(a, self.registers.sp);
                 5
             },
 
@@ -196,7 +275,7 @@ impl Z80 {
             },
 
             0x0A => {
-                self.registers.a = self.mmu.rb(self.registers.bc());
+                self.registers.a = self.mmu.read_byte(self.registers.bc());
                 2
             },
 
@@ -207,12 +286,12 @@ impl Z80 {
             },
 
             0x0C => {
-                self.registers.c = self.alu_inc(oldregs.c);
+                self.registers.c = self.alu_increase(oldregs.c);
                 1
             },
 
             0x0D => {
-                self.registers.c = self.alu_dec(oldregs.c);
+                self.registers.c = self.alu_decrease(oldregs.c);
                 1
             },
 
@@ -234,7 +313,7 @@ impl Z80 {
             },
 
             0x12 => {
-                self.mmu.wb(self.registers.de(), self.registers.a);
+                self.mmu.write_byte(self.registers.de(), self.registers.a);
                 2
             },
 
@@ -245,12 +324,12 @@ impl Z80 {
             },
 
             0x14 => {
-                self.registers.d = self.alu_inc(oldregs.d);
+                self.registers.d = self.alu_increase(oldregs.d);
                 1
             },
 
             0x15 => {
-                self.registers.d = self.alu_dec(oldregs.d);
+                self.registers.d = self.alu_decrease(oldregs.d);
                 1
             },
 
@@ -277,7 +356,7 @@ impl Z80 {
             },
 
             0x1A => {
-                self.registers.a = self.mmu.rb(self.registers.de());
+                self.registers.a = self.mmu.read_byte(self.registers.de());
                 2
             },
 
@@ -288,12 +367,12 @@ impl Z80 {
             },
 
             0x1C => {
-                self.registers.e = self.alu_inc(oldregs.e);
+                self.registers.e = self.alu_increase(oldregs.e);
                 1
             },
 
             0x1D => {
-                self.registers.e = self.alu_dec(oldregs.e);
+                self.registers.e = self.alu_decrease(oldregs.e);
                 1
             },
 
@@ -325,7 +404,7 @@ impl Z80 {
             },
 
             0x22 => {
-                self.mmu.wb(self.registers.hli(), self.registers.a);
+                self.mmu.write_byte(self.registers.hli(), self.registers.a);
                 2
             },
 
@@ -336,12 +415,12 @@ impl Z80 {
             },
 
             0x24 => {
-                self.registers.h = self.alu_inc(oldregs.h);
+                self.registers.h = self.alu_increase(oldregs.h);
                 1
             },
 
             0x25 => {
-                self.registers.h = self.alu_dec(oldregs.h);
+                self.registers.h = self.alu_decrease(oldregs.h);
                 1
             },
 
@@ -372,7 +451,7 @@ impl Z80 {
             },
 
             0x2A => {
-                self.registers.a = self.mmu.rb(self.registers.hli());
+                self.registers.a = self.mmu.read_byte(self.registers.hli());
                 2
             },
 
@@ -383,12 +462,12 @@ impl Z80 {
             },
 
             0x2C => {
-                self.registers.l = self.alu_inc(oldregs.l);
+                self.registers.l = self.alu_increase(oldregs.l);
                 1
             },
 
             0x2D => {
-                self.registers.l = self.alu_dec(oldregs.l);
+                self.registers.l = self.alu_decrease(oldregs.l);
                 1
             },
 
@@ -420,7 +499,7 @@ impl Z80 {
             },
 
             0x32 => {
-                self.mmu.wb(self.registers.hld(), self.registers.a);
+                self.mmu.write_byte(self.registers.hld(), self.registers.a);
                 2
             },
 
@@ -431,23 +510,23 @@ impl Z80 {
 
             0x34 => {
                 let a = self.registers.hl();
-                let v = self.mmu.rb(a);
-                let v2 = self.alu_inc(v);
-                self.mmu.wb(a, v2);
+                let v = self.mmu.read_byte(a);
+                let v2 = self.alu_increase(v);
+                self.mmu.write_byte(a, v2);
                 3
             },
 
             0x35 => {
                 let a = self.registers.hl();
-                let v = self.mmu.rb(a);
-                let v2 = self.alu_dec(v);
-                self.mmu.wb(a, v2);
+                let v = self.mmu.read_byte(a);
+                let v2 = self.alu_decrease(v);
+                self.mmu.write_byte(a, v2);
                 3
             },
 
             0x36 => {
                 let v = self.read_byte();
-                self.mmu.wb(self.registers.hl(), v);
+                self.mmu.write_byte(self.registers.hl(), v);
                 3
             },
 
@@ -475,7 +554,7 @@ impl Z80 {
             },
 
             0x3A => {
-                self.registers.a = self.mmu.rb(self.registers.hld());
+                self.registers.a = self.mmu.read_byte(self.registers.hld());
                 2
             },
 
@@ -485,12 +564,12 @@ impl Z80 {
             },
 
             0x3C => {
-                self.registers.a = self.alu_inc(oldregs.a);
+                self.registers.a = self.alu_increase(oldregs.a);
                 1
             },
 
             0x3D => {
-                self.registers.a = self.alu_dec(oldregs.a);
+                self.registers.a = self.alu_decrease(oldregs.a);
                 1
             },
 
@@ -540,7 +619,7 @@ impl Z80 {
 
             
             0x46 => {
-                self.registers.b = self.mmu.rb(self.registers.hl());
+                self.registers.b = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -587,7 +666,7 @@ impl Z80 {
 
             
             0x4E => {
-                self.registers.c = self.mmu.rb(self.registers.hl());
+                self.registers.c = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -634,7 +713,7 @@ impl Z80 {
 
             
             0x56 => {
-                self.registers.d = self.mmu.rb(self.registers.hl());
+                self.registers.d = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -681,7 +760,7 @@ impl Z80 {
 
             
             0x5E => {
-                self.registers.e = self.mmu.rb(self.registers.hl());
+                self.registers.e = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -728,7 +807,7 @@ impl Z80 {
 
             
             0x66 => {
-                self.registers.h = self.mmu.rb(self.registers.hl());
+                self.registers.h = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -775,7 +854,7 @@ impl Z80 {
 
             
             0x6E => {
-                self.registers.l = self.mmu.rb(self.registers.hl());
+                self.registers.l = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -787,34 +866,34 @@ impl Z80 {
 
             
             0x70 => {
-                self.mmu.wb(self.registers.hl(), self.registers.b);
+                self.mmu.write_byte(self.registers.hl(), self.registers.b);
                 2
             },
 
             
             0x71 => {
-                self.mmu.wb(self.registers.hl(), self.registers.c);
+                self.mmu.write_byte(self.registers.hl(), self.registers.c);
                 2
             },
 
             
             0x72 => {
-                self.mmu.wb(self.registers.hl(), self.registers.d);
+                self.mmu.write_byte(self.registers.hl(), self.registers.d);
                 2
             },
 
             0x73 => {
-                self.mmu.wb(self.registers.hl(), self.registers.e);
+                self.mmu.write_byte(self.registers.hl(), self.registers.e);
                 2
             },
 
             0x74 => {
-                self.mmu.wb(self.registers.hl(), self.registers.h);
+                self.mmu.write_byte(self.registers.hl(), self.registers.h);
                 2
             },
 
             0x75 => {
-                self.mmu.wb(self.registers.hl(), self.registers.l);
+                self.mmu.write_byte(self.registers.hl(), self.registers.l);
                 2
             },
 
@@ -824,7 +903,7 @@ impl Z80 {
             },
 
             0x77 => {
-                self.mmu.wb(self.registers.hl(), self.registers.a);
+                self.mmu.write_byte(self.registers.hl(), self.registers.a);
                 2
             },
 
@@ -859,7 +938,7 @@ impl Z80 {
             },
 
             0x7E => {
-                self.registers.a = self.mmu.rb(self.registers.hl());
+                self.registers.a = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
@@ -898,7 +977,7 @@ impl Z80 {
             },
 
             0x86 => {
-                let v = self.mmu.rb(self.registers.hl());
+                let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_add(v, false);
                 2
             },
@@ -939,7 +1018,7 @@ impl Z80 {
             },
 
             0x8E => {
-                let v = self.mmu.rb(self.registers.hl());
+                let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_add(v, true);
                 2
             },
@@ -950,84 +1029,84 @@ impl Z80 {
             },
 
             0x90 => {
-                self.alu_sub(oldregs.b, false);
+                self.alu_subtract(oldregs.b, false);
                 1
             },
 
             0x91 => {
-                self.alu_sub(oldregs.c, false);
+                self.alu_subtract(oldregs.c, false);
                 1
             },
 
             0x92 => {
-                self.alu_sub(oldregs.d, false);
+                self.alu_subtract(oldregs.d, false);
                 1
             },
 
             0x93 => {
-                self.alu_sub(oldregs.e, false);
+                self.alu_subtract(oldregs.e, false);
                 1
             },
 
             0x94 => {
-                self.alu_sub(oldregs.h, false);
+                self.alu_subtract(oldregs.h, false);
                 1
             },
 
             0x95 => {
-                self.alu_sub(oldregs.l, false);
+                self.alu_subtract(oldregs.l, false);
                 1
             },
 
             0x96 => {
-                let v = self.mmu.rb(self.registers.hl());
-                self.alu_sub(v, false);
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_subtract(v, false);
                 2
             },
 
             0x97 => {
-                self.alu_sub(oldregs.a, false);
+                self.alu_subtract(oldregs.a, false);
                 1
             },
 
             0x98 => {
-                self.alu_sub(oldregs.b, true);
+                self.alu_subtract(oldregs.b, true);
                 1
             },
 
             0x99 => {
-                self.alu_sub(oldregs.c, true);
+                self.alu_subtract(oldregs.c, true);
                 1
             },
 
             0x9A => {
-                self.alu_sub(oldregs.d, true);
+                self.alu_subtract(oldregs.d, true);
                 1
             },
 
             0x9B => {
-                self.alu_sub(oldregs.e, true);
+                self.alu_subtract(oldregs.e, true);
                 1
             },
 
             0x9C => {
-                self.alu_sub(oldregs.h, true);
+                self.alu_subtract(oldregs.h, true);
                 1
             },
 
             0x9D => {
-                self.alu_sub(oldregs.l, true);
+                self.alu_subtract(oldregs.l, true);
                 1
             },
 
             0x9E => {
-                let v = self.mmu.rb(self.registers.hl());
-                self.alu_sub(v, true);
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_subtract(v, true);
                 2
             },
 
             0x9F => {
-                self.alu_sub(oldregs.a, true);
+                self.alu_subtract(oldregs.a, true);
                 1
             },
 
@@ -1062,7 +1141,7 @@ impl Z80 {
             },
 
             0xA6 => {
-                let v = self.mmu.rb(self.registers.hl());
+                let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_and(v);
                 2
             },
@@ -1103,7 +1182,7 @@ impl Z80 {
             },
 
             0xAE => {
-                let v = self.mmu.rb(self.registers.hl());
+                let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_xor(v);
                 2
             },
@@ -1144,7 +1223,7 @@ impl Z80 {
             },
 
             0xB6 => {
-                let v = self.mmu.rb(self.registers.hl());
+                let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_or(v);
                 2
             },
@@ -1155,43 +1234,43 @@ impl Z80 {
             },
 
             0xB8 => {
-                self.alu_cp(oldregs.b);
+                self.alu_compare(oldregs.b);
                 1
             },
 
             0xB9 => {
-                self.alu_cp(oldregs.c);
+                self.alu_compare(oldregs.c);
                 1
             },
 
             0xBA => {
-                self.alu_cp(oldregs.d);
+                self.alu_compare(oldregs.d);
                 1
             },
 
             0xBB => {
-                self.alu_cp(oldregs.e);
+                self.alu_compare(oldregs.e);
                 1
             },
 
             0xBC => {
-                self.alu_cp(oldregs.h);
+                self.alu_compare(oldregs.h);
                 1
             },
 
             0xBD => {
-                self.alu_cp(oldregs.l);
+                self.alu_compare(oldregs.l);
                 1
             },
 
             0xBE => {
-                let v = self.mmu.rb(self.registers.hl());
-                self.alu_cp(v);
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_compare(v);
                 2
             },
 
             0xBF => {
-                self.alu_cp(oldregs.a);
+                self.alu_compare(oldregs.a);
                 1
             },
 
@@ -1278,6 +1357,8 @@ impl Z80 {
                 }
             },
 
+            // CB-prefixed operations, call a different set
+            // of operations (see method for more info)
             0xCB => {
                 self.execute_cb(oldregs)
             },
@@ -1355,7 +1436,7 @@ impl Z80 {
 
             0xD6 => {
                 let v = self.read_byte();
-                self.alu_sub(v, false);
+                self.alu_subtract(v, false);
                 2
             },
 
@@ -1376,7 +1457,7 @@ impl Z80 {
 
             0xD9 => {
                 self.registers.pc = self.pop_stack();
-                self.setei = 1;
+                self.set_enable_interrupts = 1;
                 4
             },
 
@@ -1403,7 +1484,7 @@ impl Z80 {
 
             0xDE => {
                 let v = self.read_byte();
-                self.alu_sub(v, true);
+                self.alu_subtract(v, true);
                 2
             },
 
@@ -1415,7 +1496,7 @@ impl Z80 {
 
             0xE0 => {
                 let a = 0xFF00 | self.read_byte() as u16;
-                self.mmu.wb(a, self.registers.a);
+                self.mmu.write_byte(a, self.registers.a);
                 3
             },
 
@@ -1426,7 +1507,7 @@ impl Z80 {
             },
 
             0xE2 => {
-                self.mmu.wb(0xFF00 | self.registers.c as u16, self.registers.a);
+                self.mmu.write_byte(0xFF00 | self.registers.c as u16, self.registers.a);
                 2
             },
 
@@ -1460,7 +1541,7 @@ impl Z80 {
 
             0xEA => {
                 let a = self.read_word();
-                self.mmu.wb(a, self.registers.a);
+                self.mmu.write_byte(a, self.registers.a);
                 4
             },
 
@@ -1478,7 +1559,7 @@ impl Z80 {
 
             0xF0 => {
                 let a = 0xFF00 | self.read_byte() as u16;
-                self.registers.a = self.mmu.rb(a);
+                self.registers.a = self.mmu.read_byte(a);
                 3
             },
 
@@ -1489,12 +1570,12 @@ impl Z80 {
             },
 
             0xF2 => {
-                self.registers.a = self.mmu.rb(0xFF00 | self.registers.c as u16);
+                self.registers.a = self.mmu.read_byte(0xFF00 | self.registers.c as u16);
                 2
             },
 
             0xF3 => {
-                self.setdi = 2;
+                self.set_disable_interrupts = 2;
                 1
             },
 
@@ -1532,20 +1613,20 @@ impl Z80 {
             
             0xFA => {
                 let a = self.read_word();
-                self.registers.a = self.mmu.rb(a);
+                self.registers.a = self.mmu.read_byte(a);
                 4
             },
 
             
             0xFB => {
-                self.setei = 2;
+                self.set_enable_interrupts = 2;
                 1
             },
 
             
             0xFE => {
                 let v = self.read_byte();
-                self.alu_cp(v);
+                self.alu_compare(v);
                 2
             },
 
@@ -1560,6 +1641,11 @@ impl Z80 {
         }
     }
 
+    /// Execute CB-prefixed operations
+    ///
+    /// When an operation is CB-prefixed (CB is hex), these special
+    /// operations are called. This is simply to allow the Z80 to handle
+    /// a bigger number of operations
     fn execute_cb(&mut self, oldregs: RegisterSet) -> u32 {
         let opcode = self.read_byte();
 
@@ -1570,7 +1656,7 @@ impl Z80 {
             0x03 => { self.registers.e = self.alu_rlc(oldregs.e); 2 },
             0x04 => { self.registers.h = self.alu_rlc(oldregs.h); 2 },
             0x05 => { self.registers.l = self.alu_rlc(oldregs.l); 2 },
-            0x06 => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_rlc(v); self.mmu.wb(a, v2); 4 },
+            0x06 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rlc(v); self.mmu.write_byte(a, v2); 4 },
             0x07 => { self.registers.a = self.alu_rlc(oldregs.a); 2 },
             0x08 => { self.registers.b = self.alu_rrc(oldregs.b); 2 },
             0x09 => { self.registers.c = self.alu_rrc(oldregs.c); 2 },
@@ -1578,7 +1664,7 @@ impl Z80 {
             0x0B => { self.registers.e = self.alu_rrc(oldregs.e); 2 },
             0x0C => { self.registers.h = self.alu_rrc(oldregs.h); 2 },
             0x0D => { self.registers.l = self.alu_rrc(oldregs.l); 2 },
-            0x0E => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_rrc(v); self.mmu.wb(a, v2); 4 },
+            0x0E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rrc(v); self.mmu.write_byte(a, v2); 4 },
             0x0F => { self.registers.a = self.alu_rrc(oldregs.a); 2 },
             0x10 => { self.registers.b = self.alu_rl(oldregs.b); 2 },
             0x11 => { self.registers.c = self.alu_rl(oldregs.c); 2 },
@@ -1586,7 +1672,7 @@ impl Z80 {
             0x13 => { self.registers.e = self.alu_rl(oldregs.e); 2 },
             0x14 => { self.registers.h = self.alu_rl(oldregs.h); 2 },
             0x15 => { self.registers.l = self.alu_rl(oldregs.l); 2 },
-            0x16 => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_rl(v); self.mmu.wb(a, v2); 4 },
+            0x16 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rl(v); self.mmu.write_byte(a, v2); 4 },
             0x17 => { self.registers.a = self.alu_rl(oldregs.a); 2 },
             0x18 => { self.registers.b = self.alu_rr(oldregs.b); 2 },
             0x19 => { self.registers.c = self.alu_rr(oldregs.c); 2 },
@@ -1594,7 +1680,7 @@ impl Z80 {
             0x1B => { self.registers.e = self.alu_rr(oldregs.e); 2 },
             0x1C => { self.registers.h = self.alu_rr(oldregs.h); 2 },
             0x1D => { self.registers.l = self.alu_rr(oldregs.l); 2 },
-            0x1E => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_rr(v); self.mmu.wb(a, v2); 4 },
+            0x1E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rr(v); self.mmu.write_byte(a, v2); 4 },
             0x1F => { self.registers.a = self.alu_rr(oldregs.a); 2 },
             0x20 => { self.registers.b = self.alu_sla(oldregs.b); 2 },
             0x21 => { self.registers.c = self.alu_sla(oldregs.c); 2 },
@@ -1602,7 +1688,7 @@ impl Z80 {
             0x23 => { self.registers.e = self.alu_sla(oldregs.e); 2 },
             0x24 => { self.registers.h = self.alu_sla(oldregs.h); 2 },
             0x25 => { self.registers.l = self.alu_sla(oldregs.l); 2 },
-            0x26 => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_sla(v); self.mmu.wb(a, v2); 4 },
+            0x26 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sla(v); self.mmu.write_byte(a, v2); 4 },
             0x27 => { self.registers.a = self.alu_sla(oldregs.a); 2 },
             0x28 => { self.registers.b = self.alu_sra(oldregs.b); 2 },
             0x29 => { self.registers.c = self.alu_sra(oldregs.c); 2 },
@@ -1610,7 +1696,7 @@ impl Z80 {
             0x2B => { self.registers.e = self.alu_sra(oldregs.e); 2 },
             0x2C => { self.registers.h = self.alu_sra(oldregs.h); 2 },
             0x2D => { self.registers.l = self.alu_sra(oldregs.l); 2 },
-            0x2E => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_sra(v); self.mmu.wb(a, v2); 4 },
+            0x2E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sra(v); self.mmu.write_byte(a, v2); 4 },
             0x2F => { self.registers.a = self.alu_sra(oldregs.a); 2 },
             0x30 => { self.registers.b = self.alu_swap(oldregs.b); 2 },
             0x31 => { self.registers.c = self.alu_swap(oldregs.c); 2 },
@@ -1618,7 +1704,7 @@ impl Z80 {
             0x33 => { self.registers.e = self.alu_swap(oldregs.e); 2 },
             0x34 => { self.registers.h = self.alu_swap(oldregs.h); 2 },
             0x35 => { self.registers.l = self.alu_swap(oldregs.l); 2 },
-            0x36 => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_swap(v); self.mmu.wb(a, v2); 4 },
+            0x36 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_swap(v); self.mmu.write_byte(a, v2); 4 },
             0x37 => { self.registers.a = self.alu_swap(oldregs.a); 2 },
             0x38 => { self.registers.b = self.alu_srl(oldregs.b); 2 },
             0x39 => { self.registers.c = self.alu_srl(oldregs.c); 2 },
@@ -1626,7 +1712,7 @@ impl Z80 {
             0x3B => { self.registers.e = self.alu_srl(oldregs.e); 2 },
             0x3C => { self.registers.h = self.alu_srl(oldregs.h); 2 },
             0x3D => { self.registers.l = self.alu_srl(oldregs.l); 2 },
-            0x3E => { let a = self.registers.hl(); let v = self.mmu.rb(a); let v2 = self.alu_srl(v); self.mmu.wb(a, v2); 4 },
+            0x3E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_srl(v); self.mmu.write_byte(a, v2); 4 },
             0x3F => { self.registers.a = self.alu_srl(oldregs.a); 2 },
             0x40 => { self.alu_bit(oldregs.b, 0); 2 },
             0x41 => { self.alu_bit(oldregs.c, 0); 2 },
@@ -1634,7 +1720,7 @@ impl Z80 {
             0x43 => { self.alu_bit(oldregs.e, 0); 2 },
             0x44 => { self.alu_bit(oldregs.h, 0); 2 },
             0x45 => { self.alu_bit(oldregs.l, 0); 2 },
-            0x46 => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 0); 3 },
+            0x46 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 0); 3 },
             0x47 => { self.alu_bit(oldregs.a, 0); 2 },
             0x48 => { self.alu_bit(oldregs.b, 1); 2 },
             0x49 => { self.alu_bit(oldregs.c, 1); 2 },
@@ -1642,7 +1728,7 @@ impl Z80 {
             0x4B => { self.alu_bit(oldregs.e, 1); 2 },
             0x4C => { self.alu_bit(oldregs.h, 1); 2 },
             0x4D => { self.alu_bit(oldregs.l, 1); 2 },
-            0x4E => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 1); 3 },
+            0x4E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 1); 3 },
             0x4F => { self.alu_bit(oldregs.a, 1); 2 },
             0x50 => { self.alu_bit(oldregs.b, 2); 2 },
             0x51 => { self.alu_bit(oldregs.c, 2); 2 },
@@ -1650,7 +1736,7 @@ impl Z80 {
             0x53 => { self.alu_bit(oldregs.e, 2); 2 },
             0x54 => { self.alu_bit(oldregs.h, 2); 2 },
             0x55 => { self.alu_bit(oldregs.l, 2); 2 },
-            0x56 => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 2); 3 },
+            0x56 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 2); 3 },
             0x57 => { self.alu_bit(oldregs.a, 2); 2 },
             0x58 => { self.alu_bit(oldregs.b, 3); 2 },
             0x59 => { self.alu_bit(oldregs.c, 3); 2 },
@@ -1658,7 +1744,7 @@ impl Z80 {
             0x5B => { self.alu_bit(oldregs.e, 3); 2 },
             0x5C => { self.alu_bit(oldregs.h, 3); 2 },
             0x5D => { self.alu_bit(oldregs.l, 3); 2 },
-            0x5E => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 3); 3 },
+            0x5E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 3); 3 },
             0x5F => { self.alu_bit(oldregs.a, 3); 2 },
             0x60 => { self.alu_bit(oldregs.b, 4); 2 },
             0x61 => { self.alu_bit(oldregs.c, 4); 2 },
@@ -1666,7 +1752,7 @@ impl Z80 {
             0x63 => { self.alu_bit(oldregs.e, 4); 2 },
             0x64 => { self.alu_bit(oldregs.h, 4); 2 },
             0x65 => { self.alu_bit(oldregs.l, 4); 2 },
-            0x66 => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 4); 3 },
+            0x66 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 4); 3 },
             0x67 => { self.alu_bit(oldregs.a, 4); 2 },
             0x68 => { self.alu_bit(oldregs.b, 5); 2 },
             0x69 => { self.alu_bit(oldregs.c, 5); 2 },
@@ -1674,7 +1760,7 @@ impl Z80 {
             0x6B => { self.alu_bit(oldregs.e, 5); 2 },
             0x6C => { self.alu_bit(oldregs.h, 5); 2 },
             0x6D => { self.alu_bit(oldregs.l, 5); 2 },
-            0x6E => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 5); 3 },
+            0x6E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 5); 3 },
             0x6F => { self.alu_bit(oldregs.a, 5); 2 },
             0x70 => { self.alu_bit(oldregs.b, 6); 2 },
             0x71 => { self.alu_bit(oldregs.c, 6); 2 },
@@ -1682,7 +1768,7 @@ impl Z80 {
             0x73 => { self.alu_bit(oldregs.e, 6); 2 },
             0x74 => { self.alu_bit(oldregs.h, 6); 2 },
             0x75 => { self.alu_bit(oldregs.l, 6); 2 },
-            0x76 => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 6); 3 },
+            0x76 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 6); 3 },
             0x77 => { self.alu_bit(oldregs.a, 6); 2 },
             0x78 => { self.alu_bit(oldregs.b, 7); 2 },
             0x79 => { self.alu_bit(oldregs.c, 7); 2 },
@@ -1690,7 +1776,7 @@ impl Z80 {
             0x7B => { self.alu_bit(oldregs.e, 7); 2 },
             0x7C => { self.alu_bit(oldregs.h, 7); 2 },
             0x7D => { self.alu_bit(oldregs.l, 7); 2 },
-            0x7E => { let v = self.mmu.rb(self.registers.hl()); self.alu_bit(v, 7); 3 },
+            0x7E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 7); 3 },
             0x7F => { self.alu_bit(oldregs.a, 7); 2 },
             0x80 => { self.registers.b = self.registers.b & !(1 << 0); 2 },
             0x81 => { self.registers.c = self.registers.c & !(1 << 0); 2 },
@@ -1698,7 +1784,7 @@ impl Z80 {
             0x83 => { self.registers.e = self.registers.e & !(1 << 0); 2 },
             0x84 => { self.registers.h = self.registers.h & !(1 << 0); 2 },
             0x85 => { self.registers.l = self.registers.l & !(1 << 0); 2 },
-            0x86 => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 0); self.mmu.wb(a, v); 4 },
+            0x86 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 0); self.mmu.write_byte(a, v); 4 },
             0x87 => { self.registers.a = self.registers.a & !(1 << 0); 2 },
             0x88 => { self.registers.b = self.registers.b & !(1 << 1); 2 },
             0x89 => { self.registers.c = self.registers.c & !(1 << 1); 2 },
@@ -1706,7 +1792,7 @@ impl Z80 {
             0x8B => { self.registers.e = self.registers.e & !(1 << 1); 2 },
             0x8C => { self.registers.h = self.registers.h & !(1 << 1); 2 },
             0x8D => { self.registers.l = self.registers.l & !(1 << 1); 2 },
-            0x8E => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 1); self.mmu.wb(a, v); 4 },
+            0x8E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 1); self.mmu.write_byte(a, v); 4 },
             0x8F => { self.registers.a = self.registers.a & !(1 << 1); 2 },
             0x90 => { self.registers.b = self.registers.b & !(1 << 2); 2 },
             0x91 => { self.registers.c = self.registers.c & !(1 << 2); 2 },
@@ -1714,7 +1800,7 @@ impl Z80 {
             0x93 => { self.registers.e = self.registers.e & !(1 << 2); 2 },
             0x94 => { self.registers.h = self.registers.h & !(1 << 2); 2 },
             0x95 => { self.registers.l = self.registers.l & !(1 << 2); 2 },
-            0x96 => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 2); self.mmu.wb(a, v); 4 },
+            0x96 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 2); self.mmu.write_byte(a, v); 4 },
             0x97 => { self.registers.a = self.registers.a & !(1 << 2); 2 },
             0x98 => { self.registers.b = self.registers.b & !(1 << 3); 2 },
             0x99 => { self.registers.c = self.registers.c & !(1 << 3); 2 },
@@ -1722,7 +1808,7 @@ impl Z80 {
             0x9B => { self.registers.e = self.registers.e & !(1 << 3); 2 },
             0x9C => { self.registers.h = self.registers.h & !(1 << 3); 2 },
             0x9D => { self.registers.l = self.registers.l & !(1 << 3); 2 },
-            0x9E => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 3); self.mmu.wb(a, v); 4 },
+            0x9E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 3); self.mmu.write_byte(a, v); 4 },
             0x9F => { self.registers.a = self.registers.a & !(1 << 3); 2 },
             0xA0 => { self.registers.b = self.registers.b & !(1 << 4); 2 },
             0xA1 => { self.registers.c = self.registers.c & !(1 << 4); 2 },
@@ -1730,7 +1816,7 @@ impl Z80 {
             0xA3 => { self.registers.e = self.registers.e & !(1 << 4); 2 },
             0xA4 => { self.registers.h = self.registers.h & !(1 << 4); 2 },
             0xA5 => { self.registers.l = self.registers.l & !(1 << 4); 2 },
-            0xA6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 4); self.mmu.wb(a, v); 4 },
+            0xA6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 4); self.mmu.write_byte(a, v); 4 },
             0xA7 => { self.registers.a = self.registers.a & !(1 << 4); 2 },
             0xA8 => { self.registers.b = self.registers.b & !(1 << 5); 2 },
             0xA9 => { self.registers.c = self.registers.c & !(1 << 5); 2 },
@@ -1738,7 +1824,7 @@ impl Z80 {
             0xAB => { self.registers.e = self.registers.e & !(1 << 5); 2 },
             0xAC => { self.registers.h = self.registers.h & !(1 << 5); 2 },
             0xAD => { self.registers.l = self.registers.l & !(1 << 5); 2 },
-            0xAE => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 5); self.mmu.wb(a, v); 4 },
+            0xAE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 5); self.mmu.write_byte(a, v); 4 },
             0xAF => { self.registers.a = self.registers.a & !(1 << 5); 2 },
             0xB0 => { self.registers.b = self.registers.b & !(1 << 6); 2 },
             0xB1 => { self.registers.c = self.registers.c & !(1 << 6); 2 },
@@ -1746,7 +1832,7 @@ impl Z80 {
             0xB3 => { self.registers.e = self.registers.e & !(1 << 6); 2 },
             0xB4 => { self.registers.h = self.registers.h & !(1 << 6); 2 },
             0xB5 => { self.registers.l = self.registers.l & !(1 << 6); 2 },
-            0xB6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 6); self.mmu.wb(a, v); 4 },
+            0xB6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 6); self.mmu.write_byte(a, v); 4 },
             0xB7 => { self.registers.a = self.registers.a & !(1 << 6); 2 },
             0xB8 => { self.registers.b = self.registers.b & !(1 << 7); 2 },
             0xB9 => { self.registers.c = self.registers.c & !(1 << 7); 2 },
@@ -1754,7 +1840,7 @@ impl Z80 {
             0xBB => { self.registers.e = self.registers.e & !(1 << 7); 2 },
             0xBC => { self.registers.h = self.registers.h & !(1 << 7); 2 },
             0xBD => { self.registers.l = self.registers.l & !(1 << 7); 2 },
-            0xBE => { let a = self.registers.hl(); let v = self.mmu.rb(a) & !(1 << 7); self.mmu.wb(a, v); 4 },
+            0xBE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 7); self.mmu.write_byte(a, v); 4 },
             0xBF => { self.registers.a = self.registers.a & !(1 << 7); 2 },
             0xC0 => { self.registers.b = self.registers.b | (1 << 0); 2 },
             0xC1 => { self.registers.c = self.registers.c | (1 << 0); 2 },
@@ -1762,7 +1848,7 @@ impl Z80 {
             0xC3 => { self.registers.e = self.registers.e | (1 << 0); 2 },
             0xC4 => { self.registers.h = self.registers.h | (1 << 0); 2 },
             0xC5 => { self.registers.l = self.registers.l | (1 << 0); 2 },
-            0xC6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 0); self.mmu.wb(a, v); 4 },
+            0xC6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 0); self.mmu.write_byte(a, v); 4 },
             0xC7 => { self.registers.a = self.registers.a | (1 << 0); 2 },
             0xC8 => { self.registers.b = self.registers.b | (1 << 1); 2 },
             0xC9 => { self.registers.c = self.registers.c | (1 << 1); 2 },
@@ -1770,7 +1856,7 @@ impl Z80 {
             0xCB => { self.registers.e = self.registers.e | (1 << 1); 2 },
             0xCC => { self.registers.h = self.registers.h | (1 << 1); 2 },
             0xCD => { self.registers.l = self.registers.l | (1 << 1); 2 },
-            0xCE => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 1); self.mmu.wb(a, v); 4 },
+            0xCE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 1); self.mmu.write_byte(a, v); 4 },
             0xCF => { self.registers.a = self.registers.a | (1 << 1); 2 },
             0xD0 => { self.registers.b = self.registers.b | (1 << 2); 2 },
             0xD1 => { self.registers.c = self.registers.c | (1 << 2); 2 },
@@ -1778,7 +1864,7 @@ impl Z80 {
             0xD3 => { self.registers.e = self.registers.e | (1 << 2); 2 },
             0xD4 => { self.registers.h = self.registers.h | (1 << 2); 2 },
             0xD5 => { self.registers.l = self.registers.l | (1 << 2); 2 },
-            0xD6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 2); self.mmu.wb(a, v); 4 },
+            0xD6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 2); self.mmu.write_byte(a, v); 4 },
             0xD7 => { self.registers.a = self.registers.a | (1 << 2); 2 },
             0xD8 => { self.registers.b = self.registers.b | (1 << 3); 2 },
             0xD9 => { self.registers.c = self.registers.c | (1 << 3); 2 },
@@ -1786,7 +1872,7 @@ impl Z80 {
             0xDB => { self.registers.e = self.registers.e | (1 << 3); 2 },
             0xDC => { self.registers.h = self.registers.h | (1 << 3); 2 },
             0xDD => { self.registers.l = self.registers.l | (1 << 3); 2 },
-            0xDE => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 3); self.mmu.wb(a, v); 4 },
+            0xDE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 3); self.mmu.write_byte(a, v); 4 },
             0xDF => { self.registers.a = self.registers.a | (1 << 3); 2 },
             0xE0 => { self.registers.b = self.registers.b | (1 << 4); 2 },
             0xE1 => { self.registers.c = self.registers.c | (1 << 4); 2 },
@@ -1794,7 +1880,7 @@ impl Z80 {
             0xE3 => { self.registers.e = self.registers.e | (1 << 4); 2 },
             0xE4 => { self.registers.h = self.registers.h | (1 << 4); 2 },
             0xE5 => { self.registers.l = self.registers.l | (1 << 4); 2 },
-            0xE6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 4); self.mmu.wb(a, v); 4 },
+            0xE6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 4); self.mmu.write_byte(a, v); 4 },
             0xE7 => { self.registers.a = self.registers.a | (1 << 4); 2 },
             0xE8 => { self.registers.b = self.registers.b | (1 << 5); 2 },
             0xE9 => { self.registers.c = self.registers.c | (1 << 5); 2 },
@@ -1802,7 +1888,7 @@ impl Z80 {
             0xEB => { self.registers.e = self.registers.e | (1 << 5); 2 },
             0xEC => { self.registers.h = self.registers.h | (1 << 5); 2 },
             0xED => { self.registers.l = self.registers.l | (1 << 5); 2 },
-            0xEE => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 5); self.mmu.wb(a, v); 4 },
+            0xEE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 5); self.mmu.write_byte(a, v); 4 },
             0xEF => { self.registers.a = self.registers.a | (1 << 5); 2 },
             0xF0 => { self.registers.b = self.registers.b | (1 << 6); 2 },
             0xF1 => { self.registers.c = self.registers.c | (1 << 6); 2 },
@@ -1810,7 +1896,7 @@ impl Z80 {
             0xF3 => { self.registers.e = self.registers.e | (1 << 6); 2 },
             0xF4 => { self.registers.h = self.registers.h | (1 << 6); 2 },
             0xF5 => { self.registers.l = self.registers.l | (1 << 6); 2 },
-            0xF6 => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 6); self.mmu.wb(a, v); 4 },
+            0xF6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 6); self.mmu.write_byte(a, v); 4 },
             0xF7 => { self.registers.a = self.registers.a | (1 << 6); 2 },
             0xF8 => { self.registers.b = self.registers.b | (1 << 7); 2 },
             0xF9 => { self.registers.c = self.registers.c | (1 << 7); 2 },
@@ -1818,7 +1904,7 @@ impl Z80 {
             0xFB => { self.registers.e = self.registers.e | (1 << 7); 2 },
             0xFC => { self.registers.h = self.registers.h | (1 << 7); 2 },
             0xFD => { self.registers.l = self.registers.l | (1 << 7); 2 },
-            0xFE => { let a = self.registers.hl(); let v = self.mmu.rb(a) | (1 << 7); self.mmu.wb(a, v); 4 },
+            0xFE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 7); self.mmu.write_byte(a, v); 4 },
             0xFF => { self.registers.a = self.registers.a | (1 << 7); 2 },
             other => panic!(" Instruction CB{:2X} is not implemented", other),
         }
@@ -1838,7 +1924,7 @@ impl Z80 {
         self.registers.a = r;
     }
 
-    fn alu_sub(&mut self, b: u8, usec: bool) {
+    fn alu_subtract(&mut self, b: u8, usec: bool) {
         let c = if usec && self.registers.get_flag(C) { 1 } else { 0 };
         let a = self.registers.a;
 
@@ -1885,14 +1971,14 @@ impl Z80 {
         self.registers.a = r;
     }
 
-    fn alu_cp(&mut self, b: u8) {
+    fn alu_compare(&mut self, b: u8) {
         let r = self.registers.a;
-        self.alu_sub(b, false);
+        self.alu_subtract(b, false);
 
         self.registers.a = r;
     }
 
-    fn alu_inc(&mut self, a: u8) -> u8 {
+    fn alu_increase(&mut self, a: u8) -> u8 {
         let r = a.wrapping_add(1);
         self.registers.flag(Z, r == 0);
         self.registers.flag(H, (a & 0x0F) + 1 > 0x0F);
@@ -1901,7 +1987,7 @@ impl Z80 {
         return r
     }
 
-    fn alu_dec(&mut self, a: u8) -> u8 {
+    fn alu_decrease(&mut self, a: u8) -> u8 {
         let r = a.wrapping_sub(1);
         self.registers.flag(Z, r == 0);
         self.registers.flag(H, (a & 0x0F) == 0);
@@ -1930,69 +2016,78 @@ impl Z80 {
         return a.wrapping_add(b)
     }
 
-    fn alu_srflagupdate(&mut self, r: u8, c: bool) {
+    /// Status Register (SR) flag update
+    fn alu_sr_flagupdate(&mut self, r: u8, c: bool) {
         self.registers.flag(H, false);
         self.registers.flag(N, false);
         self.registers.flag(Z, r == 0);
         self.registers.flag(C, c);
     }
 
+    /// Rotate Left with Carry (RLC) operation
     fn alu_rlc(&mut self, a: u8) -> u8 {
         let c = a & 0x80 == 0x80;
         let r = (a << 1) | (if c { 1 } else { 0 });
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Rotate Left (RL) operation
     fn alu_rl(&mut self, a: u8) -> u8 {
         let c = a & 0x80 == 0x80;
         let r = (a << 1) | (if self.registers.get_flag(C) { 1 } else { 0 });
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Rotate Right Circula (RRC) operation
     fn alu_rrc(&mut self, a: u8) -> u8 {
         let c = a & 0x01 == 0x01;
         let r = (a >> 1) | (if c { 0x80 } else { 0 });
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Rotate Right (RR) operation
     fn alu_rr(&mut self, a: u8) -> u8 {
         let c = a & 0x01 == 0x01;
         let r = (a >> 1) | (if self.registers.get_flag(C) { 0x80 } else { 0 });
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Shift-Left Arithmetic (SLA) operation
     fn alu_sla(&mut self, a: u8) -> u8 {
         let c = a & 0x80 == 0x80;
         let r = a << 1;
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Shift-Right Arithmetic (SRA) operation
     fn alu_sra(&mut self, a: u8) -> u8 {
         let c = a & 0x01 == 0x01;
         let r = (a >> 1) | (a & 0x80);
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Shift-Right Logical
     fn alu_srl(&mut self, a: u8) -> u8 {
         let c = a & 0x01 == 0x01;
         let r = a >> 1;
-        self.alu_srflagupdate(r, c);
+        self.alu_sr_flagupdate(r, c);
 
         return r
     }
 
+    /// Bit test operation
     fn alu_bit(&mut self, a: u8, b: u8) {
         let r = a & (1 << (b as u32)) == 0;
 
@@ -2010,10 +2105,13 @@ impl Z80 {
         (a >> 4) | (a << 4)
     }
 
+    /// Decimal Adjust Accumulator (DAA)
     fn alu_daa(&mut self) {
         let mut a = self.registers.a;
         let mut adjust = if self.registers.get_flag(C) { 0x60 } else { 0x00 };
+
         if self.registers.get_flag(H) { adjust |= 0x06; };
+
         if !self.registers.get_flag(N) {
             if a & 0x0F > 0x09 {
                 adjust |= 0x06;
@@ -2031,6 +2129,7 @@ impl Z80 {
         self.registers.a = a;
     }
 
+    /// Jump Relative (JR) CPU functionality
     fn cpu_jr(&mut self) {
         let n = self.read_byte() as i8;
         self.registers.pc = ((self.registers.pc as u32 as i32) + (n as i32)) as u16;
@@ -2039,7 +2138,6 @@ impl Z80 {
     pub fn get_gpu_pixels(&self) -> &[u8] {
         &self.mmu.gpu.data
     }
-
 
     pub fn key_down(&mut self, key: Key) {
         self.mmu.keypad.key_down(key);

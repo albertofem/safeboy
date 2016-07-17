@@ -43,7 +43,7 @@ pub fn load_mbc(rom_file: &str) -> Result<Box<MBC+'static>, String> {
 
     // read all bytes through the end, data now contains all
     // raw rom bytes
-    let size = file.read_to_end(&mut data).unwrap();
+    let _size = file.read_to_end(&mut data).unwrap();
 
     // in order to know what kind of MBC we are working with,
     // we need to read this address space in the ROM, which

@@ -27,7 +27,7 @@ impl Keypad {
         }
     }
 
-    pub fn rb(&self) -> u8 {
+    pub fn read_byte(&self) -> u8 {
         match self.column {
             0x00 => {
                 0x00
@@ -45,7 +45,7 @@ impl Keypad {
         }
     }
 
-    pub fn wb(&mut self, value: u8) {
+    pub fn write_byte(&mut self, value: u8) {
         self.column = value & 0x30;
     }
 
