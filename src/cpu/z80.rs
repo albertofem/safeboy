@@ -33,7 +33,7 @@ impl Z80 {
     pub fn step(&mut self) {
         while self.ticks < self.cpu_speed {
             let op_ticks = self.docycle();
-            self.mmu.do_cycle(op_ticks * 4);
+            self.mmu.step(op_ticks * 4);
 
             self.ticks += op_ticks;
         }

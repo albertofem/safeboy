@@ -35,7 +35,7 @@ pub struct MMU {
     /// * It contains a bit indicating what kind of interrupt ocurre
     ///
     /// ** 0 V-Blank (GPU)
-    /// ** 1 LCD STAT (Display)
+    /// ** 1 LCD STAT (GPU)
     /// ** 2 Timer
     /// ** 3 Serial port
     /// ** 4 Keypad
@@ -136,11 +136,11 @@ impl MMU {
         self.wb(0xFF49, 0xFF);
     }
 
-    /// Cycle the MMU
+    /// Steps the MMU
     ///
     /// This will handle interrupts from implemented sources
     /// (timer, GPU and keypad) and also cycle the GPU and the Timer
-    pub fn do_cycle(&mut self, ticks: u32) {
+    pub fn step(&mut self, ticks: u32) {
         // cycle the timer and check for interrupts
         self.timer.do_cycle(ticks);
         self.interrupt_flag |= self.timer.interrupt;
@@ -151,7 +151,7 @@ impl MMU {
         self.interrupt_flag |= self.keypad.interrupt;
 
         // cycle the GPU and check for GPU interrupts
-        self.gpu.do_cycle(ticks);
+        self.gpu.step(ticks);
         self.interrupt_flag |= self.gpu.interrupt;
 
         // reset interrupts
@@ -164,7 +164,7 @@ impl MMU {
     ///
     /// Providing a valid address, the MMU will return the
     /// value found in the address space. Some addresses are mapped
-    /// to GPU, timer, keypad, etc. addressed, but this is handled
+    /// to GPU, timer, keypad, etc. addresses, but this is handled
     /// internally
     pub fn rb(&mut self, address: u16) -> u8 {
         match address {
