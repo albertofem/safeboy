@@ -248,6 +248,7 @@ impl MMU {
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
+            // extra MBC memory. see more details in the MBC module
             0x0000 ... 0x7FFF =>  {
                 self.mbc.write_rom(address, value)
             },
@@ -256,43 +257,51 @@ impl MMU {
                 self.gpu.write_byte(address, value)
             },
 
+            // more MBC memory!
             0xA000 ... 0xBFFF => {
                 self.mbc.write_ram(address, value)
             },
 
+            // internal working ram (bank 0)
             0xC000 ... 0xCFFF | 0xE000 ... 0xEFFF => {
                 self.working_ram[address as usize & 0x0FFF] = value
             },
 
+            // internal working ram (bank 1)
             0xD000 ... 0xDFFF | 0xF000 ... 0xFDFF => {
                 self.working_ram[0x1000 | (address as usize & 0x0FFF)] = value
             },
 
+            // gpu, mapped to OAM (object attribute memory)
             0xFE00 ... 0xFE9F => {
                 self.gpu.write_byte(address, value)
             },
 
+            // first of I/O ports, the keypad
             0xFF00 => {
                 self.keypad.write_byte(value)
             },
 
+            // serial port, not implemented
+            0xFF01 ... 0xFF03 => {
+            }
+
+            // timer
             0xFF04 ... 0xFF07 => {
                 self.timer.write_byte(address, value)
             },
 
+            // sound, unimplemented
             0xFF10 ... 0xFF3F => {
-                // Sound unimplemented
             },
 
+            // DMA (Direct Memory Access) transfer from
+            // RAM to OAM
             0xFF46 => {
-                self.oamdma(value)
+                self.dma_ram_to_oam_transfer(value)
             },
 
             0xFF40 ... 0xFF4F => {
-                self.gpu.write_byte(address, value)
-            },
-
-            0xFF68 ... 0xFF6B => {
                 self.gpu.write_byte(address, value)
             },
 
@@ -308,11 +317,7 @@ impl MMU {
                 self.interrupt_enable = value
             },
 
-            0xFF01 ... 0xFF02 => {
-                // Serial port unimplemented
-            },
-
-            unimplemented => println!("Unimplemented memory instruction: {0:x}", unimplemented),
+            unimplemented => println!("Unimplemented memory address: {0:x}", unimplemented),
         };
     }
 
@@ -321,8 +326,9 @@ impl MMU {
         self.write_byte(address + 1, (value >> 8) as u8);
     }
 
-    fn oamdma(&mut self, value: u8) {
+    fn dma_ram_to_oam_transfer(&mut self, value: u8) {
         let base = (value as u16) << 8;
+
         for i in 0 .. 0xA0 {
             let b = self.read_byte(base + i);
             self.write_byte(0xFE00 + i, b);

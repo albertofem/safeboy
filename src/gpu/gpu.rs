@@ -311,6 +311,19 @@ impl GPU {
 
             0xFE00 ... 0xFE9F => self.video_object_attribute_memory [address as usize - 0xFE00],
 
+            // GPU Control read. we return the status of the LCD
+            // as a 8 bit hex number. This is a good example on how bitwise
+            // operations works. we need to set every bit from the hex number
+            // and we can do it by applying the OR operator, at each position
+            // of the control hex number, like this:
+            // Bit 7 -> 1000 0000 (0x80)
+            // Bit 6 -> 0100 0000 (0x40)
+            // Bit 5 -> 0010 0000 (0x20)
+            // Bit 4 -> 0001 0000 (0x10)
+            // Bit 3 -> 0000 1000 (0x08)
+            // Bit 2 -> 0000 0100 (0x04)
+            // Bit 1 -> 0000 0010 (0x02)
+            // Bit 0 -> 0000 0001 (0x01)
             0xFF40 => {
                 (if self.lcd_display_enable                                 { 0x80 } else { 0 })    |
                     (if self.window_tile_map_display_base_address == 0x9C00 { 0x40 } else { 0 })    |
@@ -322,6 +335,7 @@ impl GPU {
                     (if self.background_display_enable                      { 0x01 } else { 0 })
             },
 
+            // GPU STAT read. Interrupts in the GPU state
             0xFF41 => {
                 (if self.lyc_interrupt                  { 0x40 } else { 0 })    |
                     (if self.oam_interrupt              { 0x20 } else { 0 })    |
@@ -332,6 +346,8 @@ impl GPU {
                     self.mode as u8
             },
 
+            // the following reads maps 1:1 to the rest of data
+            // found in the GPU
             0xFF42 => self.scroll_position_y,
 
             0xFF43 => self.scroll_position_x,
@@ -353,7 +369,7 @@ impl GPU {
             0xFF4B => self.window_position_x,
 
             _ => {
-                println!("GPU does not handle read {:04X}", address);
+                println!("Invalid GPU Read {:04X}", address);
                 0
             },
         }
@@ -366,21 +382,27 @@ impl GPU {
     /// perform a variety of changes, described on the code.
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
+            // manipulates the video ram data. We apply the AND & operator
+            // in order to map the hex address requested to our 0-indexed vector
             0x8000 ... 0x9FFF => self.video_ram[address as usize & 0x1FFF] = value,
 
             0xFE00 ... 0xFE9F => self.video_object_attribute_memory[address as usize - 0xFE00] = value,
 
+            // GPU control write. see more details in the method
             0xFF40 => {
                 self.handle_gpu_control(value)
             },
 
+            // we see the proper interrupts taking them from the
+            // 4 more significant bits of the value
             0xFF41 => {
-                self.lyc_interrupt = value & 0x40 == 0x40;
-                self.oam_interrupt = value & 0x20 == 0x20;
-                self.vertical_blank_interrupt = value & 0x10 == 0x10;
-                self.horizontal_blank_interrupt = value & 0x08 == 0x08;
+                self.lyc_interrupt =                value & 0x40 == 0x40;
+                self.oam_interrupt =                value & 0x20 == 0x20;
+                self.vertical_blank_interrupt =     value & 0x10 == 0x10;
+                self.horizontal_blank_interrupt =   value & 0x08 == 0x08;
             },
 
+            // some 1:1 mapped value settings to follow
             0xFF42 => self.scroll_position_y = value,
 
             0xFF43 => self.scroll_position_x = value,
@@ -391,6 +413,8 @@ impl GPU {
 
             0xFF46 => panic!("0xFF46 should be handled by MMU"),
 
+            // these three 1:1 mapped, but they also need to calculate
+            // the RGB pixel color to be pushed to the screen
             0xFF47 => {
                 self.bg_palette_data = value;
                 self.update_palette_colors();
@@ -411,7 +435,7 @@ impl GPU {
             0xFF4B => self.window_position_x = value,
 
             _ => {
-                println!("GPU does not handle write {:04X}", address)
+                println!("Invalid GPU write {:04X}", address)
             },
         }
     }
@@ -425,7 +449,7 @@ impl GPU {
     fn change_mode(&mut self, mode: Mode) {
         self.mode = mode;
 
-        if match self.mode {
+        let interrupt = match self.mode {
             Mode::HorizontalBlank => {
                 self.render_scan();
                 self.horizontal_blank_interrupt
@@ -436,13 +460,15 @@ impl GPU {
             },
             Mode::OAMRead => self.oam_interrupt,
             _ => false,
-        } {
+        };
+
+        if interrupt {
             self.interrupt |= 0x02;
         }
     }
 
-    fn read_byte_from_video_ram(&self, a: u16) -> u8 {
-        self.video_ram[a as usize & 0x1FFF]
+    fn read_byte_from_video_ram(&self, address: u16) -> u8 {
+        self.video_ram[address as usize & 0x1FFF]
     }
 
     /// Handle the GPU STAT / Control instruction
@@ -542,95 +568,142 @@ impl GPU {
         self.draw_sprites();
     }
 
-    fn set_color(&mut self, x: usize, color: u8) {
-        self.data[self.line as usize * WIDTH * 3 + x * 3 + 0] = color;
-        self.data[self.line as usize * WIDTH * 3 + x * 3 + 1] = color;
-        self.data[self.line as usize * WIDTH * 3 + x * 3 + 2] = color;
+    /// Set a pixel color
+    fn set_color(&mut self, position_x: usize, color: u8) {
+        let position_y = self.line as usize;
+
+        self.data[position_y * WIDTH * 3 + position_x * 3 + 0] = color;
+        self.data[position_y * WIDTH * 3 + position_x * 3 + 1] = color;
+        self.data[position_y * WIDTH * 3 + position_x * 3 + 2] = color;
     }
 
+    /// Draws the background and window
+    /// 
+    /// This is the function called before drawing sprites, and will
+    /// draw both the background and window layer on the screen. More
+    /// details in the implementation
     fn draw_background(&mut self) {
-        let drawbg = self.background_display_enable;
+        let draw_background = self.background_display_enable;
 
+        // first we calculate the window position.
         let window_position_y =
-        if !self.window_display_enable || !self.background_display_enable {
-            -1
-        } else {
-            self.line as i32 - self.window_position_y as i32
-        };
+            if !self.window_display_enable || !self.background_display_enable {
+                -1
+            } else {
+                // if the window is being draw, the position aligned
+                // with the current line beign raw
+                self.line as i32 - self.window_position_y as i32
+            };
 
-        if window_position_y < 0 && drawbg == false {
+        // if no window and bg are displayed, we return to the caller
+        if window_position_y < 0 && draw_background == false {
             return;
         }
 
-        let wintiley = (window_position_y as u16 >> 3) & 31;
+        // calculate the window tile
+        let window_tile_y = (window_position_y as u16 >> 3) & 31;
 
-        let bgy = self.scroll_position_y.wrapping_add(self.line);
-        let bgtiley = (bgy as u16 >> 3) & 31;
+        let background_y = self.scroll_position_y.wrapping_add(self.line);
+        let background_tile_y = (background_y as u16 >> 3) & 31;
 
         for x in 0 .. WIDTH {
-            let window_position_x = - ((self.window_position_x as i32) - 7) + (x as i32);
-            let bgx = self.scroll_position_x as u32 + x as u32;
+            self.draw_background_line(
+                x,
+                draw_background,
+                background_tile_y,
+                background_y,
+                window_tile_y,
+                window_position_y
+            )
+        }
+    }
 
-            let (tilemapbase, tiley, tilex, pixely, pixelx) = if window_position_y >= 0 && window_position_x >= 0 {
-                (self.window_tile_map_display_base_address,
-                 wintiley,
-                 (window_position_x as u16 >> 3),
-                 window_position_y as u16 & 0x07,
-                 window_position_x as u8 & 0x07)
-            } else if drawbg {
-                (self.bg_tile_map_base_address,
-                 bgtiley,
-                 (bgx as u16 >> 3) & 31,
-                 bgy as u16 & 0x07,
-                 bgx as u8 & 0x07)
+    fn draw_background_line(
+        &mut self,
+        x: usize,
+        draw_background: bool,
+        background_tile_y: u16,
+        background_y: u8,
+        window_tile_y: u16,
+        window_position_y: i32
+    ) {
+        let window_position_x = - ((self.window_position_x as i32) - 7) + (x as i32);
+        let background_x = self.scroll_position_x as u32 + x as u32;
+
+        let (
+            tile_map_base_address,
+            tile_y,
+            tile_x,
+            pixel_y,
+            pixel_x
+        ) =
+        if window_position_y >= 0 && window_position_x >= 0 {
+            (
+                self.window_tile_map_display_base_address,
+                window_tile_y,
+                (window_position_x as u16 >> 3),
+                window_position_y as u16 & 0x07,
+                window_position_x as u8 & 0x07
+            )
+        } else if draw_background {
+            (
+                self.bg_tile_map_base_address,
+                background_tile_y,
+                (background_x as u16 >> 3) & 31,
+                background_y as u16 & 0x07,
+                background_x as u8 & 0x07
+            )
+        } else {
+            return;
+        };
+
+        let tile_number: u8 = self.read_byte_from_video_ram(tile_map_base_address + tile_y * 32 + tile_x);
+
+        let tile_address =
+
+        self.bg_window_tile_data_base_address +
+            (
+                if self.bg_window_tile_data_base_address == 0x8000 {
+                    tile_number as u16
+                } else {
+                    (tile_number as i8 as i16 + 128) as u16
+                }
+            ) * 16;
+
+        let a0 = tile_address + (pixel_y * 2);
+
+        let (b1, b2) = (
+            self.read_byte_from_video_ram(a0),
+            self.read_byte_from_video_ram(a0 + 1)
+        );
+
+        let xbit = 7 - pixel_x;
+
+        let color_number =
+            if b1 & (1 << xbit) != 0 {
+                1
             } else {
-                continue;
+                0
+            }
+
+            |
+
+            if b2 & (1 << xbit) != 0 {
+                2
+            } else {
+                0
             };
 
-            let tilenr: u8 = self.read_byte_from_video_ram(tilemapbase + tiley * 32 + tilex);
-
-            let tileaddress = self.bg_window_tile_data_base_address
-                + (if self.bg_window_tile_data_base_address == 0x8000 {
-                tilenr as u16
+        self.bg_priority[x] =
+            if color_number == 0 {
+                PrioType::Color0
             } else {
-                (tilenr as i8 as i16 + 128) as u16
-            }) * 16;
+                PrioType::Normal
+            };
 
-            let a0 = tileaddress + (pixely * 2);
+        let color = self.bg_palette_colors[color_number];
 
-            let (b1, b2) = (
-                self.read_byte_from_video_ram(a0),
-                self.read_byte_from_video_ram(a0 + 1)
-            );
-
-            let xbit = 7 - pixelx;
-
-            let colnr =
-                if b1 & (1 << xbit) != 0 {
-                    1
-                } else {
-                    0
-                }
-
-                    |
-
-                if b2 & (1 << xbit) != 0 {
-                    2
-                } else {
-                    0
-                };
-
-            self.bg_priority[x] =
-                if colnr == 0 {
-                    PrioType::Color0
-                } else {
-                    PrioType::Normal
-                };
-
-            let color = self.bg_palette_colors[colnr];
-
-            self.set_color(x, color);
-        }
+        self.set_color(x, color);
     }
 
     fn draw_sprites(&mut self) {
@@ -640,20 +713,29 @@ impl GPU {
 
         for index in 0 .. 40 {
             let i = 39 - index;
-            let spriteaddr = 0xFE00 + (i as u16) * 4;
+            let sprite_address = 0xFE00 + (i as u16) * 4;
 
-            let spritey = self.read_byte(spriteaddr + 0) as u16 as i32 - 16;
-            let spritex = self.read_byte(spriteaddr + 1) as u16 as i32 - 8;
+            let spritey = self.read_byte(sprite_address + 0) as u16 as i32 - 16;
+            let spritex = self.read_byte(sprite_address + 1) as u16 as i32 - 8;
 
-            let tilenum = (self.read_byte(spriteaddr + 2) & (
-                if self.sprite_size == 16 {
-                    0xFE
-                } else {
-                    0xFF
-                }
-            )) as u16;
+            let tile_number =
+                (
+                    self.read_byte(sprite_address + 2) &
 
-            let flags = self.read_byte(spriteaddr + 3) as usize;
+                    // sprites can be 16 or 8 sized
+                    (if self.sprite_size == 16 {
+                        0xFE
+                    } else {
+                        0xFF
+                    })
+
+                ) as u16;
+
+            // we read this sprite flags in order to determine some
+            // rendering options, that can be set by game programmers.
+            // this is done by bit shifting the options stored (as hex)
+            // and converting to bools we will be using
+            let flags = self.read_byte(sprite_address + 3) as usize;
             let useobj_1_palette_colors: bool = flags & (1 << 4) != 0;
             let xflip: bool = flags & (1 << 5) != 0;
             let yflip: bool = flags & (1 << 6) != 0;
@@ -662,6 +744,7 @@ impl GPU {
             let line = self.line as i32;
             let sprite_size = self.sprite_size as i32;
 
+            // ignore some obvious sprite limits
             if line < spritey || line >= spritey + sprite_size {
                 continue
             }
@@ -670,18 +753,18 @@ impl GPU {
                 continue
             }
 
-            let tiley: u16 =
+            let tile_y: u16 =
                 if yflip {
                     (sprite_size - 1 - (line - spritey)) as u16
                 } else {
                     (line - spritey) as u16
                 };
 
-            let tileaddress = 0x8000u16 + tilenum * 16 + tiley * 2;
+            let tile_address = 0x8000u16 + tile_number * 16 + tile_y * 2;
 
             let (b1, b2) = (
-                self.read_byte_from_video_ram(tileaddress),
-                self.read_byte_from_video_ram(tileaddress + 1)
+                self.read_byte_from_video_ram(tile_address),
+                self.read_byte_from_video_ram(tile_address + 1)
             );
 
             for x in 0 .. 8 {
@@ -697,7 +780,7 @@ impl GPU {
                     } as u32
                 );
 
-                let colnr =
+                let color_number =
                     (if b1 & xbit != 0 {
                         1
                     } else {
@@ -712,18 +795,19 @@ impl GPU {
                         0
                     });
 
-                if colnr == 0 {
+                if color_number == 0 {
                     continue
                 }
 
+                // here we first check the
                 if belowbg && self.bg_priority[(spritex + x) as usize] != PrioType::Color0 {
                     continue
                 }
 
                 let color = if useobj_1_palette_colors {
-                    self.obj_1_palette_colors[colnr]
+                    self.obj_1_palette_colors[color_number]
                 } else {
-                    self.obj_0_palette_colors[colnr]
+                    self.obj_0_palette_colors[color_number]
                 };
 
                 self.set_color((spritex + x) as usize, color);

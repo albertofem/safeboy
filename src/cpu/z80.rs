@@ -216,6 +216,11 @@ impl Z80 {
         w
     }
 
+    /// Executes an opcode
+    ///
+    /// This is where instructions sent by the game are handled.
+    ///
+    /// The Z80 contains 256 operations plus 256 CB-prefixed (see below)
     fn execute(&mut self, opcode: u8) -> u32 {
         let oldregs = self.registers;
 
@@ -1650,266 +1655,1362 @@ impl Z80 {
         let opcode = self.read_byte();
 
         match opcode {
-            0x00 => { self.registers.b = self.alu_rlc(oldregs.b); 2 },
-            0x01 => { self.registers.c = self.alu_rlc(oldregs.c); 2 },
-            0x02 => { self.registers.d = self.alu_rlc(oldregs.d); 2 },
-            0x03 => { self.registers.e = self.alu_rlc(oldregs.e); 2 },
-            0x04 => { self.registers.h = self.alu_rlc(oldregs.h); 2 },
-            0x05 => { self.registers.l = self.alu_rlc(oldregs.l); 2 },
-            0x06 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rlc(v); self.mmu.write_byte(a, v2); 4 },
-            0x07 => { self.registers.a = self.alu_rlc(oldregs.a); 2 },
-            0x08 => { self.registers.b = self.alu_rrc(oldregs.b); 2 },
-            0x09 => { self.registers.c = self.alu_rrc(oldregs.c); 2 },
-            0x0A => { self.registers.d = self.alu_rrc(oldregs.d); 2 },
-            0x0B => { self.registers.e = self.alu_rrc(oldregs.e); 2 },
-            0x0C => { self.registers.h = self.alu_rrc(oldregs.h); 2 },
-            0x0D => { self.registers.l = self.alu_rrc(oldregs.l); 2 },
-            0x0E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rrc(v); self.mmu.write_byte(a, v2); 4 },
-            0x0F => { self.registers.a = self.alu_rrc(oldregs.a); 2 },
-            0x10 => { self.registers.b = self.alu_rl(oldregs.b); 2 },
-            0x11 => { self.registers.c = self.alu_rl(oldregs.c); 2 },
-            0x12 => { self.registers.d = self.alu_rl(oldregs.d); 2 },
-            0x13 => { self.registers.e = self.alu_rl(oldregs.e); 2 },
-            0x14 => { self.registers.h = self.alu_rl(oldregs.h); 2 },
-            0x15 => { self.registers.l = self.alu_rl(oldregs.l); 2 },
-            0x16 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rl(v); self.mmu.write_byte(a, v2); 4 },
-            0x17 => { self.registers.a = self.alu_rl(oldregs.a); 2 },
-            0x18 => { self.registers.b = self.alu_rr(oldregs.b); 2 },
-            0x19 => { self.registers.c = self.alu_rr(oldregs.c); 2 },
-            0x1A => { self.registers.d = self.alu_rr(oldregs.d); 2 },
-            0x1B => { self.registers.e = self.alu_rr(oldregs.e); 2 },
-            0x1C => { self.registers.h = self.alu_rr(oldregs.h); 2 },
-            0x1D => { self.registers.l = self.alu_rr(oldregs.l); 2 },
-            0x1E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rr(v); self.mmu.write_byte(a, v2); 4 },
-            0x1F => { self.registers.a = self.alu_rr(oldregs.a); 2 },
-            0x20 => { self.registers.b = self.alu_sla(oldregs.b); 2 },
-            0x21 => { self.registers.c = self.alu_sla(oldregs.c); 2 },
-            0x22 => { self.registers.d = self.alu_sla(oldregs.d); 2 },
-            0x23 => { self.registers.e = self.alu_sla(oldregs.e); 2 },
-            0x24 => { self.registers.h = self.alu_sla(oldregs.h); 2 },
-            0x25 => { self.registers.l = self.alu_sla(oldregs.l); 2 },
-            0x26 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sla(v); self.mmu.write_byte(a, v2); 4 },
-            0x27 => { self.registers.a = self.alu_sla(oldregs.a); 2 },
-            0x28 => { self.registers.b = self.alu_sra(oldregs.b); 2 },
-            0x29 => { self.registers.c = self.alu_sra(oldregs.c); 2 },
-            0x2A => { self.registers.d = self.alu_sra(oldregs.d); 2 },
-            0x2B => { self.registers.e = self.alu_sra(oldregs.e); 2 },
-            0x2C => { self.registers.h = self.alu_sra(oldregs.h); 2 },
-            0x2D => { self.registers.l = self.alu_sra(oldregs.l); 2 },
-            0x2E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sra(v); self.mmu.write_byte(a, v2); 4 },
-            0x2F => { self.registers.a = self.alu_sra(oldregs.a); 2 },
-            0x30 => { self.registers.b = self.alu_swap(oldregs.b); 2 },
-            0x31 => { self.registers.c = self.alu_swap(oldregs.c); 2 },
-            0x32 => { self.registers.d = self.alu_swap(oldregs.d); 2 },
-            0x33 => { self.registers.e = self.alu_swap(oldregs.e); 2 },
-            0x34 => { self.registers.h = self.alu_swap(oldregs.h); 2 },
-            0x35 => { self.registers.l = self.alu_swap(oldregs.l); 2 },
-            0x36 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_swap(v); self.mmu.write_byte(a, v2); 4 },
-            0x37 => { self.registers.a = self.alu_swap(oldregs.a); 2 },
-            0x38 => { self.registers.b = self.alu_srl(oldregs.b); 2 },
-            0x39 => { self.registers.c = self.alu_srl(oldregs.c); 2 },
-            0x3A => { self.registers.d = self.alu_srl(oldregs.d); 2 },
-            0x3B => { self.registers.e = self.alu_srl(oldregs.e); 2 },
-            0x3C => { self.registers.h = self.alu_srl(oldregs.h); 2 },
-            0x3D => { self.registers.l = self.alu_srl(oldregs.l); 2 },
-            0x3E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_srl(v); self.mmu.write_byte(a, v2); 4 },
-            0x3F => { self.registers.a = self.alu_srl(oldregs.a); 2 },
-            0x40 => { self.alu_bit(oldregs.b, 0); 2 },
-            0x41 => { self.alu_bit(oldregs.c, 0); 2 },
-            0x42 => { self.alu_bit(oldregs.d, 0); 2 },
-            0x43 => { self.alu_bit(oldregs.e, 0); 2 },
-            0x44 => { self.alu_bit(oldregs.h, 0); 2 },
-            0x45 => { self.alu_bit(oldregs.l, 0); 2 },
-            0x46 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 0); 3 },
-            0x47 => { self.alu_bit(oldregs.a, 0); 2 },
-            0x48 => { self.alu_bit(oldregs.b, 1); 2 },
-            0x49 => { self.alu_bit(oldregs.c, 1); 2 },
-            0x4A => { self.alu_bit(oldregs.d, 1); 2 },
-            0x4B => { self.alu_bit(oldregs.e, 1); 2 },
-            0x4C => { self.alu_bit(oldregs.h, 1); 2 },
-            0x4D => { self.alu_bit(oldregs.l, 1); 2 },
-            0x4E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 1); 3 },
-            0x4F => { self.alu_bit(oldregs.a, 1); 2 },
-            0x50 => { self.alu_bit(oldregs.b, 2); 2 },
-            0x51 => { self.alu_bit(oldregs.c, 2); 2 },
-            0x52 => { self.alu_bit(oldregs.d, 2); 2 },
-            0x53 => { self.alu_bit(oldregs.e, 2); 2 },
-            0x54 => { self.alu_bit(oldregs.h, 2); 2 },
-            0x55 => { self.alu_bit(oldregs.l, 2); 2 },
-            0x56 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 2); 3 },
-            0x57 => { self.alu_bit(oldregs.a, 2); 2 },
-            0x58 => { self.alu_bit(oldregs.b, 3); 2 },
-            0x59 => { self.alu_bit(oldregs.c, 3); 2 },
-            0x5A => { self.alu_bit(oldregs.d, 3); 2 },
-            0x5B => { self.alu_bit(oldregs.e, 3); 2 },
-            0x5C => { self.alu_bit(oldregs.h, 3); 2 },
-            0x5D => { self.alu_bit(oldregs.l, 3); 2 },
-            0x5E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 3); 3 },
-            0x5F => { self.alu_bit(oldregs.a, 3); 2 },
-            0x60 => { self.alu_bit(oldregs.b, 4); 2 },
-            0x61 => { self.alu_bit(oldregs.c, 4); 2 },
-            0x62 => { self.alu_bit(oldregs.d, 4); 2 },
-            0x63 => { self.alu_bit(oldregs.e, 4); 2 },
-            0x64 => { self.alu_bit(oldregs.h, 4); 2 },
-            0x65 => { self.alu_bit(oldregs.l, 4); 2 },
-            0x66 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 4); 3 },
-            0x67 => { self.alu_bit(oldregs.a, 4); 2 },
-            0x68 => { self.alu_bit(oldregs.b, 5); 2 },
-            0x69 => { self.alu_bit(oldregs.c, 5); 2 },
-            0x6A => { self.alu_bit(oldregs.d, 5); 2 },
-            0x6B => { self.alu_bit(oldregs.e, 5); 2 },
-            0x6C => { self.alu_bit(oldregs.h, 5); 2 },
-            0x6D => { self.alu_bit(oldregs.l, 5); 2 },
-            0x6E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 5); 3 },
-            0x6F => { self.alu_bit(oldregs.a, 5); 2 },
-            0x70 => { self.alu_bit(oldregs.b, 6); 2 },
-            0x71 => { self.alu_bit(oldregs.c, 6); 2 },
-            0x72 => { self.alu_bit(oldregs.d, 6); 2 },
-            0x73 => { self.alu_bit(oldregs.e, 6); 2 },
-            0x74 => { self.alu_bit(oldregs.h, 6); 2 },
-            0x75 => { self.alu_bit(oldregs.l, 6); 2 },
-            0x76 => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 6); 3 },
-            0x77 => { self.alu_bit(oldregs.a, 6); 2 },
-            0x78 => { self.alu_bit(oldregs.b, 7); 2 },
-            0x79 => { self.alu_bit(oldregs.c, 7); 2 },
-            0x7A => { self.alu_bit(oldregs.d, 7); 2 },
-            0x7B => { self.alu_bit(oldregs.e, 7); 2 },
-            0x7C => { self.alu_bit(oldregs.h, 7); 2 },
-            0x7D => { self.alu_bit(oldregs.l, 7); 2 },
-            0x7E => { let v = self.mmu.read_byte(self.registers.hl()); self.alu_bit(v, 7); 3 },
-            0x7F => { self.alu_bit(oldregs.a, 7); 2 },
-            0x80 => { self.registers.b = self.registers.b & !(1 << 0); 2 },
-            0x81 => { self.registers.c = self.registers.c & !(1 << 0); 2 },
-            0x82 => { self.registers.d = self.registers.d & !(1 << 0); 2 },
-            0x83 => { self.registers.e = self.registers.e & !(1 << 0); 2 },
-            0x84 => { self.registers.h = self.registers.h & !(1 << 0); 2 },
-            0x85 => { self.registers.l = self.registers.l & !(1 << 0); 2 },
-            0x86 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 0); self.mmu.write_byte(a, v); 4 },
-            0x87 => { self.registers.a = self.registers.a & !(1 << 0); 2 },
-            0x88 => { self.registers.b = self.registers.b & !(1 << 1); 2 },
-            0x89 => { self.registers.c = self.registers.c & !(1 << 1); 2 },
-            0x8A => { self.registers.d = self.registers.d & !(1 << 1); 2 },
-            0x8B => { self.registers.e = self.registers.e & !(1 << 1); 2 },
-            0x8C => { self.registers.h = self.registers.h & !(1 << 1); 2 },
-            0x8D => { self.registers.l = self.registers.l & !(1 << 1); 2 },
-            0x8E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 1); self.mmu.write_byte(a, v); 4 },
-            0x8F => { self.registers.a = self.registers.a & !(1 << 1); 2 },
-            0x90 => { self.registers.b = self.registers.b & !(1 << 2); 2 },
-            0x91 => { self.registers.c = self.registers.c & !(1 << 2); 2 },
-            0x92 => { self.registers.d = self.registers.d & !(1 << 2); 2 },
-            0x93 => { self.registers.e = self.registers.e & !(1 << 2); 2 },
-            0x94 => { self.registers.h = self.registers.h & !(1 << 2); 2 },
-            0x95 => { self.registers.l = self.registers.l & !(1 << 2); 2 },
-            0x96 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 2); self.mmu.write_byte(a, v); 4 },
-            0x97 => { self.registers.a = self.registers.a & !(1 << 2); 2 },
-            0x98 => { self.registers.b = self.registers.b & !(1 << 3); 2 },
-            0x99 => { self.registers.c = self.registers.c & !(1 << 3); 2 },
-            0x9A => { self.registers.d = self.registers.d & !(1 << 3); 2 },
-            0x9B => { self.registers.e = self.registers.e & !(1 << 3); 2 },
-            0x9C => { self.registers.h = self.registers.h & !(1 << 3); 2 },
-            0x9D => { self.registers.l = self.registers.l & !(1 << 3); 2 },
-            0x9E => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 3); self.mmu.write_byte(a, v); 4 },
-            0x9F => { self.registers.a = self.registers.a & !(1 << 3); 2 },
-            0xA0 => { self.registers.b = self.registers.b & !(1 << 4); 2 },
-            0xA1 => { self.registers.c = self.registers.c & !(1 << 4); 2 },
-            0xA2 => { self.registers.d = self.registers.d & !(1 << 4); 2 },
-            0xA3 => { self.registers.e = self.registers.e & !(1 << 4); 2 },
-            0xA4 => { self.registers.h = self.registers.h & !(1 << 4); 2 },
-            0xA5 => { self.registers.l = self.registers.l & !(1 << 4); 2 },
-            0xA6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 4); self.mmu.write_byte(a, v); 4 },
-            0xA7 => { self.registers.a = self.registers.a & !(1 << 4); 2 },
-            0xA8 => { self.registers.b = self.registers.b & !(1 << 5); 2 },
-            0xA9 => { self.registers.c = self.registers.c & !(1 << 5); 2 },
-            0xAA => { self.registers.d = self.registers.d & !(1 << 5); 2 },
-            0xAB => { self.registers.e = self.registers.e & !(1 << 5); 2 },
-            0xAC => { self.registers.h = self.registers.h & !(1 << 5); 2 },
-            0xAD => { self.registers.l = self.registers.l & !(1 << 5); 2 },
-            0xAE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 5); self.mmu.write_byte(a, v); 4 },
-            0xAF => { self.registers.a = self.registers.a & !(1 << 5); 2 },
-            0xB0 => { self.registers.b = self.registers.b & !(1 << 6); 2 },
-            0xB1 => { self.registers.c = self.registers.c & !(1 << 6); 2 },
-            0xB2 => { self.registers.d = self.registers.d & !(1 << 6); 2 },
-            0xB3 => { self.registers.e = self.registers.e & !(1 << 6); 2 },
-            0xB4 => { self.registers.h = self.registers.h & !(1 << 6); 2 },
-            0xB5 => { self.registers.l = self.registers.l & !(1 << 6); 2 },
-            0xB6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 6); self.mmu.write_byte(a, v); 4 },
-            0xB7 => { self.registers.a = self.registers.a & !(1 << 6); 2 },
-            0xB8 => { self.registers.b = self.registers.b & !(1 << 7); 2 },
-            0xB9 => { self.registers.c = self.registers.c & !(1 << 7); 2 },
-            0xBA => { self.registers.d = self.registers.d & !(1 << 7); 2 },
-            0xBB => { self.registers.e = self.registers.e & !(1 << 7); 2 },
-            0xBC => { self.registers.h = self.registers.h & !(1 << 7); 2 },
-            0xBD => { self.registers.l = self.registers.l & !(1 << 7); 2 },
-            0xBE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) & !(1 << 7); self.mmu.write_byte(a, v); 4 },
-            0xBF => { self.registers.a = self.registers.a & !(1 << 7); 2 },
-            0xC0 => { self.registers.b = self.registers.b | (1 << 0); 2 },
-            0xC1 => { self.registers.c = self.registers.c | (1 << 0); 2 },
-            0xC2 => { self.registers.d = self.registers.d | (1 << 0); 2 },
-            0xC3 => { self.registers.e = self.registers.e | (1 << 0); 2 },
-            0xC4 => { self.registers.h = self.registers.h | (1 << 0); 2 },
-            0xC5 => { self.registers.l = self.registers.l | (1 << 0); 2 },
-            0xC6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 0); self.mmu.write_byte(a, v); 4 },
-            0xC7 => { self.registers.a = self.registers.a | (1 << 0); 2 },
-            0xC8 => { self.registers.b = self.registers.b | (1 << 1); 2 },
-            0xC9 => { self.registers.c = self.registers.c | (1 << 1); 2 },
-            0xCA => { self.registers.d = self.registers.d | (1 << 1); 2 },
-            0xCB => { self.registers.e = self.registers.e | (1 << 1); 2 },
-            0xCC => { self.registers.h = self.registers.h | (1 << 1); 2 },
-            0xCD => { self.registers.l = self.registers.l | (1 << 1); 2 },
-            0xCE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 1); self.mmu.write_byte(a, v); 4 },
-            0xCF => { self.registers.a = self.registers.a | (1 << 1); 2 },
-            0xD0 => { self.registers.b = self.registers.b | (1 << 2); 2 },
-            0xD1 => { self.registers.c = self.registers.c | (1 << 2); 2 },
-            0xD2 => { self.registers.d = self.registers.d | (1 << 2); 2 },
-            0xD3 => { self.registers.e = self.registers.e | (1 << 2); 2 },
-            0xD4 => { self.registers.h = self.registers.h | (1 << 2); 2 },
-            0xD5 => { self.registers.l = self.registers.l | (1 << 2); 2 },
-            0xD6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 2); self.mmu.write_byte(a, v); 4 },
-            0xD7 => { self.registers.a = self.registers.a | (1 << 2); 2 },
-            0xD8 => { self.registers.b = self.registers.b | (1 << 3); 2 },
-            0xD9 => { self.registers.c = self.registers.c | (1 << 3); 2 },
-            0xDA => { self.registers.d = self.registers.d | (1 << 3); 2 },
-            0xDB => { self.registers.e = self.registers.e | (1 << 3); 2 },
-            0xDC => { self.registers.h = self.registers.h | (1 << 3); 2 },
-            0xDD => { self.registers.l = self.registers.l | (1 << 3); 2 },
-            0xDE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 3); self.mmu.write_byte(a, v); 4 },
-            0xDF => { self.registers.a = self.registers.a | (1 << 3); 2 },
-            0xE0 => { self.registers.b = self.registers.b | (1 << 4); 2 },
-            0xE1 => { self.registers.c = self.registers.c | (1 << 4); 2 },
-            0xE2 => { self.registers.d = self.registers.d | (1 << 4); 2 },
-            0xE3 => { self.registers.e = self.registers.e | (1 << 4); 2 },
-            0xE4 => { self.registers.h = self.registers.h | (1 << 4); 2 },
-            0xE5 => { self.registers.l = self.registers.l | (1 << 4); 2 },
-            0xE6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 4); self.mmu.write_byte(a, v); 4 },
-            0xE7 => { self.registers.a = self.registers.a | (1 << 4); 2 },
-            0xE8 => { self.registers.b = self.registers.b | (1 << 5); 2 },
-            0xE9 => { self.registers.c = self.registers.c | (1 << 5); 2 },
-            0xEA => { self.registers.d = self.registers.d | (1 << 5); 2 },
-            0xEB => { self.registers.e = self.registers.e | (1 << 5); 2 },
-            0xEC => { self.registers.h = self.registers.h | (1 << 5); 2 },
-            0xED => { self.registers.l = self.registers.l | (1 << 5); 2 },
-            0xEE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 5); self.mmu.write_byte(a, v); 4 },
-            0xEF => { self.registers.a = self.registers.a | (1 << 5); 2 },
-            0xF0 => { self.registers.b = self.registers.b | (1 << 6); 2 },
-            0xF1 => { self.registers.c = self.registers.c | (1 << 6); 2 },
-            0xF2 => { self.registers.d = self.registers.d | (1 << 6); 2 },
-            0xF3 => { self.registers.e = self.registers.e | (1 << 6); 2 },
-            0xF4 => { self.registers.h = self.registers.h | (1 << 6); 2 },
-            0xF5 => { self.registers.l = self.registers.l | (1 << 6); 2 },
-            0xF6 => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 6); self.mmu.write_byte(a, v); 4 },
-            0xF7 => { self.registers.a = self.registers.a | (1 << 6); 2 },
-            0xF8 => { self.registers.b = self.registers.b | (1 << 7); 2 },
-            0xF9 => { self.registers.c = self.registers.c | (1 << 7); 2 },
-            0xFA => { self.registers.d = self.registers.d | (1 << 7); 2 },
-            0xFB => { self.registers.e = self.registers.e | (1 << 7); 2 },
-            0xFC => { self.registers.h = self.registers.h | (1 << 7); 2 },
-            0xFD => { self.registers.l = self.registers.l | (1 << 7); 2 },
-            0xFE => { let a = self.registers.hl(); let v = self.mmu.read_byte(a) | (1 << 7); self.mmu.write_byte(a, v); 4 },
-            0xFF => { self.registers.a = self.registers.a | (1 << 7); 2 },
-            other => panic!(" Instruction CB{:2X} is not implemented", other),
+            // RLC B
+            0x00 => {
+                self.registers.b = self.alu_rlc(oldregs.b);
+                2
+            },
+
+            // RLC C
+            0x01 => {
+                self.registers.c = self.alu_rlc(oldregs.c);
+                2
+            },
+
+            // RLC D
+            0x02 => {
+                self.registers.d = self.alu_rlc(oldregs.d);
+                2
+            },
+
+            0x03 => {
+                self.registers.e = self.alu_rlc(oldregs.e);
+                2
+            },
+            
+            0x04 => {
+                self.registers.h = self.alu_rlc(oldregs.h); 
+                2 
+            },
+            
+            0x05 => {
+                self.registers.l = self.alu_rlc(oldregs.l); 
+                2 
+            },
+            
+            0x06 => {
+                let a = self.registers.hl(); 
+                let v = self.mmu.read_byte(a); 
+                let v2 = self.alu_rlc(v); 
+                self.mmu.write_byte(a, v2); 
+                4 
+            },
+
+            0x07 => {
+                self.registers.a = self.alu_rlc(oldregs.a); 
+                2 
+            },
+
+            0x08 => {
+                self.registers.b = self.alu_rrc(oldregs.b); 
+                2 
+            },
+
+            0x09 => {
+                self.registers.c = self.alu_rrc(oldregs.c);
+                2 
+            },
+
+            0x0A => {
+                self.registers.d = self.alu_rrc(oldregs.d);
+                2 
+            },
+
+            0x0B => {
+                self.registers.e = self.alu_rrc(oldregs.e);
+                2 
+            },
+
+            0x0C => {
+                self.registers.h = self.alu_rrc(oldregs.h);
+                2 
+            },
+
+            0x0D => {
+                self.registers.l = self.alu_rrc(oldregs.l);
+                2 
+            },
+
+            0x0E => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rrc(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x0F => {
+                self.registers.a = self.alu_rrc(oldregs.a);
+                2 
+            },
+
+            0x10 => {
+                self.registers.b = self.alu_rl(oldregs.b);
+                2 
+            },
+
+            0x11 => {
+                self.registers.c = self.alu_rl(oldregs.c);
+                2 
+            },
+
+            0x12 => {
+                self.registers.d = self.alu_rl(oldregs.d);
+                2 
+            },
+
+            0x13 => {
+                self.registers.e = self.alu_rl(oldregs.e);
+                2 
+            },
+
+            0x14 => {
+                self.registers.h = self.alu_rl(oldregs.h);
+                2 
+            },
+
+            0x15 => {
+                self.registers.l = self.alu_rl(oldregs.l);
+                2 
+            },
+
+            0x16 => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rl(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x17 => {
+                self.registers.a = self.alu_rl(oldregs.a);
+                2 
+            },
+
+            0x18 => {
+                self.registers.b = self.alu_rr(oldregs.b);
+                2 
+            },
+
+            0x19 => {
+                self.registers.c = self.alu_rr(oldregs.c);
+                2 
+            },
+
+            0x1A => {
+                self.registers.d = self.alu_rr(oldregs.d);
+                2 
+            },
+
+            0x1B => {
+                self.registers.e = self.alu_rr(oldregs.e);
+                2 
+            },
+
+            0x1C => {
+                self.registers.h = self.alu_rr(oldregs.h);
+                2 
+            },
+
+            0x1D => {
+                self.registers.l = self.alu_rr(oldregs.l);
+                2 
+            },
+
+            0x1E => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rr(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x1F => {
+                self.registers.a = self.alu_rr(oldregs.a);
+                2 
+            },
+
+            0x20 => {
+                self.registers.b = self.alu_sla(oldregs.b);
+                2 
+            },
+
+            0x21 => {
+                self.registers.c = self.alu_sla(oldregs.c);
+                2 
+            },
+
+            0x22 => {
+                self.registers.d = self.alu_sla(oldregs.d);
+                2 
+            },
+
+            0x23 => {
+                self.registers.e = self.alu_sla(oldregs.e);
+                2 
+            },
+
+            0x24 => {
+                self.registers.h = self.alu_sla(oldregs.h);
+                2 
+            },
+
+            0x25 => {
+                self.registers.l = self.alu_sla(oldregs.l);
+                2 
+            },
+
+            0x26 => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sla(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x27 => {
+                self.registers.a = self.alu_sla(oldregs.a);
+                2 
+            },
+
+            0x28 => {
+                self.registers.b = self.alu_sra(oldregs.b);
+                2 
+            },
+
+            0x29 => {
+                self.registers.c = self.alu_sra(oldregs.c);
+                2 
+            },
+
+            0x2A => {
+                self.registers.d = self.alu_sra(oldregs.d);
+                2 
+            },
+
+            0x2B => {
+                self.registers.e = self.alu_sra(oldregs.e);
+                2 
+            },
+
+            0x2C => {
+                self.registers.h = self.alu_sra(oldregs.h);
+                2 
+            },
+
+            0x2D => {
+                self.registers.l = self.alu_sra(oldregs.l);
+                2 
+            },
+
+            0x2E => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sra(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x2F => {
+                self.registers.a = self.alu_sra(oldregs.a);
+                2 
+            },
+
+            0x30 => {
+                self.registers.b = self.alu_swap(oldregs.b);
+                2 
+            },
+
+            0x31 => {
+                self.registers.c = self.alu_swap(oldregs.c);
+                2 
+            },
+
+            0x32 => {
+                self.registers.d = self.alu_swap(oldregs.d);
+                2 
+            },
+
+            0x33 => {
+                self.registers.e = self.alu_swap(oldregs.e);
+                2 
+            },
+
+            0x34 => {
+                self.registers.h = self.alu_swap(oldregs.h);
+                2 
+            },
+
+            0x35 => {
+                self.registers.l = self.alu_swap(oldregs.l);
+                2 
+            },
+
+            0x36 => {
+                let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_swap(v); self.mmu.write_byte(a, v2);
+                4 
+            },
+
+            0x37 => {
+                self.registers.a = self.alu_swap(oldregs.a);
+                2 
+            },
+
+            0x38 => {
+                self.registers.b = self.alu_srl(oldregs.b);
+                2 
+            },
+
+            0x39 => {
+                self.registers.c = self.alu_srl(oldregs.c);
+                2 
+            },
+
+            0x3A => {
+                self.registers.d = self.alu_srl(oldregs.d);
+                2 
+            },
+
+            0x3B => {
+                self.registers.e = self.alu_srl(oldregs.e);
+                2 
+            },
+
+            0x3C => {
+                self.registers.h = self.alu_srl(oldregs.h);
+                2 
+            },
+
+            0x3D => {
+                self.registers.l = self.alu_srl(oldregs.l);
+                2 
+            },
+
+            0x3E => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a);
+                let v2 = self.alu_srl(v);
+                self.mmu.write_byte(a, v2);
+
+                4 
+            },
+
+            0x3F => {
+                self.registers.a = self.alu_srl(oldregs.a);
+                2 
+            },
+
+            0x40 => {
+                self.alu_bit(oldregs.b, 0);
+                2 
+            },
+
+            0x41 => {
+                self.alu_bit(oldregs.c, 0);
+                2 
+            },
+
+            0x42 => {
+                self.alu_bit(oldregs.d, 0);
+                2 
+            },
+
+            0x43 => {
+                self.alu_bit(oldregs.e, 0);
+                2 
+            },
+
+            0x44 => {
+                self.alu_bit(oldregs.h, 0);
+                2 
+            },
+
+            0x45 => {
+                self.alu_bit(oldregs.l, 0);
+                2 
+            },
+
+            0x46 => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 0);
+                3 
+            },
+
+            0x47 => {
+                self.alu_bit(oldregs.a, 0);
+                2 
+            },
+
+            0x48 => {
+                self.alu_bit(oldregs.b, 1);
+                2 
+            },
+
+            0x49 => {
+                self.alu_bit(oldregs.c, 1);
+                2 
+            },
+
+            0x4A => {
+                self.alu_bit(oldregs.d, 1);
+                2 
+            },
+
+            0x4B => {
+                self.alu_bit(oldregs.e, 1);
+                2 
+            },
+
+            0x4C => {
+                self.alu_bit(oldregs.h, 1);
+                2 
+            },
+
+            0x4D => {
+                self.alu_bit(oldregs.l, 1);
+                2 
+            },
+
+            0x4E => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 1);
+                3 
+            },
+
+            0x4F => {
+                self.alu_bit(oldregs.a, 1);
+                2 
+            },
+
+            0x50 => {
+                self.alu_bit(oldregs.b, 2);
+                2 
+            },
+
+            0x51 => {
+                self.alu_bit(oldregs.c, 2);
+                2 
+            },
+
+            0x52 => {
+                self.alu_bit(oldregs.d, 2);
+                2 
+            },
+
+            0x53 => {
+                self.alu_bit(oldregs.e, 2);
+                2 
+            },
+
+            0x54 => {
+                self.alu_bit(oldregs.h, 2);
+                2 
+            },
+
+            0x55 => {
+                self.alu_bit(oldregs.l, 2);
+                2 
+            },
+
+            0x56 => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 2);
+
+                3 
+            },
+
+            0x57 => {
+                self.alu_bit(oldregs.a, 2);
+                2 
+            },
+
+            0x58 => {
+                self.alu_bit(oldregs.b, 3);
+                2 
+            },
+
+            0x59 => {
+                self.alu_bit(oldregs.c, 3);
+                2 
+            },
+
+            0x5A => {
+                self.alu_bit(oldregs.d, 3);
+                2 
+            },
+
+            0x5B => {
+                self.alu_bit(oldregs.e, 3);
+                2 
+            },
+
+            0x5C => {
+                self.alu_bit(oldregs.h, 3);
+                2 
+            },
+
+            0x5D => {
+                self.alu_bit(oldregs.l, 3);
+                2 
+            },
+
+            0x5E => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 3);
+
+                3 
+            },
+
+            0x5F => {
+                self.alu_bit(oldregs.a, 3);
+                2 
+            },
+
+            0x60 => {
+                self.alu_bit(oldregs.b, 4);
+                2 
+            },
+
+            0x61 => {
+                self.alu_bit(oldregs.c, 4);
+                2 
+            },
+
+            0x62 => {
+                self.alu_bit(oldregs.d, 4);
+                2 
+            },
+
+            0x63 => {
+                self.alu_bit(oldregs.e, 4);
+                2 
+            },
+
+            0x64 => {
+                self.alu_bit(oldregs.h, 4);
+                2 
+            },
+
+            0x65 => {
+                self.alu_bit(oldregs.l, 4);
+                2 
+            },
+
+            0x66 => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 4);
+
+                3 
+            },
+
+            0x67 => {
+                self.alu_bit(oldregs.a, 4);
+                2 
+            },
+
+            0x68 => {
+                self.alu_bit(oldregs.b, 5);
+                2 
+            },
+
+            0x69 => {
+                self.alu_bit(oldregs.c, 5);
+                2 
+            },
+
+            0x6A => {
+                self.alu_bit(oldregs.d, 5);
+                2 
+            },
+
+            0x6B => {
+                self.alu_bit(oldregs.e, 5);
+                2 
+            },
+
+            0x6C => {
+                self.alu_bit(oldregs.h, 5);
+                2 
+            },
+
+            0x6D => {
+                self.alu_bit(oldregs.l, 5);
+                2 
+            },
+
+            0x6E => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 5);
+
+                3 
+            },
+
+            0x6F => {
+                self.alu_bit(oldregs.a, 5);
+                2 
+            },
+
+            0x70 => {
+                self.alu_bit(oldregs.b, 6);
+                2 
+            },
+
+            0x71 => {
+                self.alu_bit(oldregs.c, 6);
+                2 
+            },
+
+            0x72 => {
+                self.alu_bit(oldregs.d, 6);
+                2 
+            },
+
+            0x73 => {
+                self.alu_bit(oldregs.e, 6);
+                2 
+            },
+
+            0x74 => {
+                self.alu_bit(oldregs.h, 6);
+                2 
+            },
+
+            0x75 => {
+                self.alu_bit(oldregs.l, 6);
+                2 
+            },
+
+            0x76 => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 6);
+
+                3 
+            },
+
+            0x77 => {
+                self.alu_bit(oldregs.a, 6);
+                2 
+            },
+
+            0x78 => {
+                self.alu_bit(oldregs.b, 7);
+                2 
+            },
+
+            0x79 => {
+                self.alu_bit(oldregs.c, 7);
+                2 
+            },
+
+            0x7A => {
+                self.alu_bit(oldregs.d, 7);
+                2 
+            },
+
+            0x7B => {
+                self.alu_bit(oldregs.e, 7);
+                2 
+            },
+
+            0x7C => {
+                self.alu_bit(oldregs.h, 7);
+                2 
+            },
+
+            0x7D => {
+                self.alu_bit(oldregs.l, 7);
+                2 
+            },
+
+            0x7E => {
+                let v = self.mmu.read_byte(self.registers.hl());
+                self.alu_bit(v, 7);
+
+                3 
+            },
+
+            0x7F => {
+                self.alu_bit(oldregs.a, 7);
+                2 
+            },
+
+            0x80 => {
+                self.registers.b = self.registers.b & !(1 << 0);
+                2 
+            },
+
+            0x81 => {
+                self.registers.c = self.registers.c & !(1 << 0);
+                2 
+            },
+
+            0x82 => {
+                self.registers.d = self.registers.d & !(1 << 0);
+                2 
+            },
+
+            0x83 => {
+                self.registers.e = self.registers.e & !(1 << 0);
+                2 
+            },
+
+            0x84 => {
+                self.registers.h = self.registers.h & !(1 << 0);
+                2 
+            },
+
+            0x85 => {
+                self.registers.l = self.registers.l & !(1 << 0);
+                2 
+            },
+
+            0x86 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 0);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0x87 => {
+                self.registers.a = self.registers.a & !(1 << 0);
+                2 
+            },
+
+            0x88 => {
+                self.registers.b = self.registers.b & !(1 << 1);
+                2 
+            },
+
+            0x89 => {
+                self.registers.c = self.registers.c & !(1 << 1);
+                2 
+            },
+
+            0x8A => {
+                self.registers.d = self.registers.d & !(1 << 1);
+                2 
+            },
+
+            0x8B => {
+                self.registers.e = self.registers.e & !(1 << 1);
+                2 
+            },
+
+            0x8C => {
+                self.registers.h = self.registers.h & !(1 << 1);
+                2 
+            },
+
+            0x8D => {
+                self.registers.l = self.registers.l & !(1 << 1);
+                2 
+            },
+
+            0x8E => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 1);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0x8F => {
+                self.registers.a = self.registers.a & !(1 << 1);
+                2 
+            },
+
+            0x90 => {
+                self.registers.b = self.registers.b & !(1 << 2);
+                2 
+            },
+
+            0x91 => {
+                self.registers.c = self.registers.c & !(1 << 2);
+                2 
+            },
+
+            0x92 => {
+                self.registers.d = self.registers.d & !(1 << 2);
+                2 
+            },
+
+            0x93 => {
+                self.registers.e = self.registers.e & !(1 << 2);
+                2 
+            },
+
+            0x94 => {
+                self.registers.h = self.registers.h & !(1 << 2);
+                2 
+            },
+
+            0x95 => {
+                self.registers.l = self.registers.l & !(1 << 2);
+                2 
+            },
+
+            0x96 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 2);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0x97 => {
+                self.registers.a = self.registers.a & !(1 << 2);
+                2 
+            },
+
+            0x98 => {
+                self.registers.b = self.registers.b & !(1 << 3);
+                2 
+            },
+
+            0x99 => {
+                self.registers.c = self.registers.c & !(1 << 3);
+                2 
+            },
+
+            0x9A => {
+                self.registers.d = self.registers.d & !(1 << 3);
+                2 
+            },
+
+            0x9B => {
+                self.registers.e = self.registers.e & !(1 << 3);
+                2 
+            },
+
+            0x9C => {
+                self.registers.h = self.registers.h & !(1 << 3);
+                2 
+            },
+
+            0x9D => {
+                self.registers.l = self.registers.l & !(1 << 3);
+                2 
+            },
+
+            0x9E => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 3);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0x9F => {
+                self.registers.a = self.registers.a & !(1 << 3);
+                2 
+            },
+
+            0xA0 => {
+                self.registers.b = self.registers.b & !(1 << 4);
+                2 
+            },
+
+            0xA1 => {
+                self.registers.c = self.registers.c & !(1 << 4);
+                2 
+            },
+
+            0xA2 => {
+                self.registers.d = self.registers.d & !(1 << 4);
+                2 
+            },
+
+            0xA3 => {
+                self.registers.e = self.registers.e & !(1 << 4);
+                2 
+            },
+
+            0xA4 => {
+                self.registers.h = self.registers.h & !(1 << 4);
+                2 
+            },
+
+            0xA5 => {
+                self.registers.l = self.registers.l & !(1 << 4);
+                2 
+            },
+
+            0xA6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 4);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xA7 => {
+                self.registers.a = self.registers.a & !(1 << 4);
+                2 
+            },
+
+            0xA8 => {
+                self.registers.b = self.registers.b & !(1 << 5);
+                2 
+            },
+
+            0xA9 => {
+                self.registers.c = self.registers.c & !(1 << 5);
+                2 
+            },
+
+            0xAA => {
+                self.registers.d = self.registers.d & !(1 << 5);
+                2 
+            },
+
+            0xAB => {
+                self.registers.e = self.registers.e & !(1 << 5);
+                2 
+            },
+
+            0xAC => {
+                self.registers.h = self.registers.h & !(1 << 5);
+                2 
+            },
+
+            0xAD => {
+                self.registers.l = self.registers.l & !(1 << 5);
+                2 
+            },
+
+            0xAE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 5);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xAF => {
+                self.registers.a = self.registers.a & !(1 << 5);
+                2 
+            },
+
+            0xB0 => {
+                self.registers.b = self.registers.b & !(1 << 6);
+                2 
+            },
+
+            0xB1 => {
+                self.registers.c = self.registers.c & !(1 << 6);
+                2 
+            },
+
+            0xB2 => {
+                self.registers.d = self.registers.d & !(1 << 6);
+                2 
+            },
+
+            0xB3 => {
+                self.registers.e = self.registers.e & !(1 << 6);
+                2 
+            },
+
+            0xB4 => {
+                self.registers.h = self.registers.h & !(1 << 6);
+                2 
+            },
+
+            0xB5 => {
+                self.registers.l = self.registers.l & !(1 << 6);
+                2 
+            },
+
+            0xB6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 6);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xB7 => {
+                self.registers.a = self.registers.a & !(1 << 6);
+                2 
+            },
+
+            0xB8 => {
+                self.registers.b = self.registers.b & !(1 << 7);
+                2 
+            },
+
+            0xB9 => {
+                self.registers.c = self.registers.c & !(1 << 7);
+                2 
+            },
+
+            0xBA => {
+                self.registers.d = self.registers.d & !(1 << 7);
+                2 
+            },
+
+            0xBB => {
+                self.registers.e = self.registers.e & !(1 << 7);
+                2 
+            },
+
+            0xBC => {
+                self.registers.h = self.registers.h & !(1 << 7);
+                2 
+            },
+
+            0xBD => {
+                self.registers.l = self.registers.l & !(1 << 7);
+                2 
+            },
+
+            0xBE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) & !(1 << 7);
+                self.mmu.write_byte(a, v);
+                4 
+            },
+
+            0xBF => {
+                self.registers.a = self.registers.a & !(1 << 7);
+                2 
+            },
+
+            0xC0 => {
+                self.registers.b = self.registers.b | (1 << 0);
+                2 
+            },
+
+            0xC1 => {
+                self.registers.c = self.registers.c | (1 << 0);
+                2 
+            },
+
+            0xC2 => {
+                self.registers.d = self.registers.d | (1 << 0);
+                2 
+            },
+
+            0xC3 => {
+                self.registers.e = self.registers.e | (1 << 0);
+                2 
+            },
+
+            0xC4 => {
+                self.registers.h = self.registers.h | (1 << 0);
+                2 
+            },
+
+            0xC5 => {
+                self.registers.l = self.registers.l | (1 << 0);
+                2 
+            },
+
+            0xC6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 0);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xC7 => {
+                self.registers.a = self.registers.a | (1 << 0);
+                2 
+            },
+
+            0xC8 => {
+                self.registers.b = self.registers.b | (1 << 1);
+                2 
+            },
+
+            0xC9 => {
+                self.registers.c = self.registers.c | (1 << 1);
+                2 
+            },
+
+            0xCA => {
+                self.registers.d = self.registers.d | (1 << 1);
+                2 
+            },
+
+            0xCB => {
+                self.registers.e = self.registers.e | (1 << 1);
+                2 
+            },
+
+            0xCC => {
+                self.registers.h = self.registers.h | (1 << 1);
+                2 
+            },
+
+            0xCD => {
+                self.registers.l = self.registers.l | (1 << 1);
+                2 
+            },
+
+            0xCE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 1);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xCF => {
+                self.registers.a = self.registers.a | (1 << 1);
+                2 
+            },
+
+            0xD0 => {
+                self.registers.b = self.registers.b | (1 << 2);
+                2 
+            },
+
+            0xD1 => {
+                self.registers.c = self.registers.c | (1 << 2);
+                2 
+            },
+
+            0xD2 => {
+                self.registers.d = self.registers.d | (1 << 2);
+                2 
+            },
+
+            0xD3 => {
+                self.registers.e = self.registers.e | (1 << 2);
+                2 
+            },
+
+            0xD4 => {
+                self.registers.h = self.registers.h | (1 << 2);
+                2 
+            },
+
+            0xD5 => {
+                self.registers.l = self.registers.l | (1 << 2);
+                2 
+            },
+
+            0xD6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 2);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xD7 => {
+                self.registers.a = self.registers.a | (1 << 2);
+                2 
+            },
+
+            0xD8 => {
+                self.registers.b = self.registers.b | (1 << 3);
+                2 
+            },
+
+            0xD9 => {
+                self.registers.c = self.registers.c | (1 << 3);
+                2 
+            },
+
+            0xDA => {
+                self.registers.d = self.registers.d | (1 << 3);
+                2 
+            },
+
+            0xDB => {
+                self.registers.e = self.registers.e | (1 << 3);
+                2 
+            },
+
+            0xDC => {
+                self.registers.h = self.registers.h | (1 << 3);
+                2 
+            },
+
+            0xDD => {
+                self.registers.l = self.registers.l | (1 << 3);
+                2 
+            },
+
+            0xDE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 3);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xDF => {
+                self.registers.a = self.registers.a | (1 << 3);
+                2 
+            },
+
+            0xE0 => {
+                self.registers.b = self.registers.b | (1 << 4);
+                2 
+            },
+
+            0xE1 => {
+                self.registers.c = self.registers.c | (1 << 4);
+                2 
+            },
+
+            0xE2 => {
+                self.registers.d = self.registers.d | (1 << 4);
+                2 
+            },
+
+            0xE3 => {
+                self.registers.e = self.registers.e | (1 << 4);
+                2 
+            },
+
+            0xE4 => {
+                self.registers.h = self.registers.h | (1 << 4);
+                2 
+            },
+
+            0xE5 => {
+                self.registers.l = self.registers.l | (1 << 4);
+                2 
+            },
+
+            0xE6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 4);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xE7 => {
+                self.registers.a = self.registers.a | (1 << 4);
+                2 
+            },
+
+            0xE8 => {
+                self.registers.b = self.registers.b | (1 << 5);
+                2 
+            },
+
+            0xE9 => {
+                self.registers.c = self.registers.c | (1 << 5);
+                2 
+            },
+
+            0xEA => {
+                self.registers.d = self.registers.d | (1 << 5);
+                2 
+            },
+
+            0xEB => {
+                self.registers.e = self.registers.e | (1 << 5);
+                2 
+            },
+
+            0xEC => {
+                self.registers.h = self.registers.h | (1 << 5);
+                2 
+            },
+
+            0xED => {
+                self.registers.l = self.registers.l | (1 << 5);
+                2 
+            },
+
+            0xEE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 5);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xEF => {
+                self.registers.a = self.registers.a | (1 << 5);
+                2 
+            },
+
+            0xF0 => {
+                self.registers.b = self.registers.b | (1 << 6);
+                2 
+            },
+
+            0xF1 => {
+                self.registers.c = self.registers.c | (1 << 6);
+                2 
+            },
+
+            0xF2 => {
+                self.registers.d = self.registers.d | (1 << 6);
+                2 
+            },
+
+            0xF3 => {
+                self.registers.e = self.registers.e | (1 << 6);
+                2 
+            },
+
+            0xF4 => {
+                self.registers.h = self.registers.h | (1 << 6);
+                2 
+            },
+
+            0xF5 => {
+                self.registers.l = self.registers.l | (1 << 6);
+                2 
+            },
+
+            0xF6 => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 6);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xF7 => {
+                self.registers.a = self.registers.a | (1 << 6);
+                2 
+            },
+
+            0xF8 => {
+                self.registers.b = self.registers.b | (1 << 7);
+                2 
+            },
+
+            0xF9 => {
+                self.registers.c = self.registers.c | (1 << 7);
+                2 
+            },
+
+            0xFA => {
+                self.registers.d = self.registers.d | (1 << 7);
+                2 
+            },
+
+            0xFB => {
+                self.registers.e = self.registers.e | (1 << 7);
+                2 
+            },
+
+            0xFC => {
+                self.registers.h = self.registers.h | (1 << 7);
+                2 
+            },
+
+            0xFD => {
+                self.registers.l = self.registers.l | (1 << 7);
+                2 
+            },
+
+            0xFE => {
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a) | (1 << 7);
+                self.mmu.write_byte(a, v);
+
+                4 
+            },
+
+            0xFF => {
+                self.registers.a = self.registers.a | (1 << 7);
+                2 
+            },
+
+            other => panic!("Bad CB instruction: {:2X}", other),
         }
     }
 
+    /// Performs an addition
     fn alu_add(&mut self, b: u8, usec: bool) {
         let c = if usec && self.registers.get_flag(C) { 1 } else { 0 };
         let a = self.registers.a;
@@ -1924,6 +3025,9 @@ impl Z80 {
         self.registers.a = r;
     }
 
+    /// Performs a subtraction
+    ///
+    /// More details in the code
     fn alu_subtract(&mut self, b: u8, usec: bool) {
         let c = if usec && self.registers.get_flag(C) { 1 } else { 0 };
         let a = self.registers.a;
@@ -2017,18 +3121,23 @@ impl Z80 {
     }
 
     /// Status Register (SR) flag update
-    fn alu_sr_flagupdate(&mut self, r: u8, c: bool) {
+    fn alu_sr_flagupdate(&mut self, r: u8, carry: bool) {
         self.registers.flag(H, false);
         self.registers.flag(N, false);
         self.registers.flag(Z, r == 0);
-        self.registers.flag(C, c);
+        self.registers.flag(C, carry);
     }
 
     /// Rotate Left with Carry (RLC) operation
+    ///
+    /// 8-bit rotation to the left. The bit leaving on the left
+    /// is copied into the carry, and to bit 0.
     fn alu_rlc(&mut self, a: u8) -> u8 {
-        let c = a & 0x80 == 0x80;
-        let r = (a << 1) | (if c { 1 } else { 0 });
-        self.alu_sr_flagupdate(r, c);
+        let carry = a & 0x80 == 0x80;
+
+        let r = (a << 1) | (if carry { 1 } else { 0 });
+
+        self.alu_sr_flagupdate(r, carry);
 
         return r
     }

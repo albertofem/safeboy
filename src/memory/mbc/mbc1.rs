@@ -9,6 +9,7 @@ pub struct MBC1 {
     rambank: usize,
 }
 
+
 impl MBC1 {
     pub fn new(data: Vec<u8>,) -> MBC1 {
         let ramsize = match data[0x147] {
@@ -17,9 +18,15 @@ impl MBC1 {
             _ => 0,
         };
 
+        let mut initial_ram = Vec::with_capacity(ramsize);
+
+        for _i in 0..ramsize {
+            initial_ram.push(0u8);
+        }
+
         MBC1 {
             rom: data,
-            ram: ::std::iter::repeat(0u8).take(ramsize).collect(),
+            ram: initial_ram,
             ram_on: false,
             ram_mode: false,
             rombank: 1,
@@ -29,32 +36,36 @@ impl MBC1 {
 }
 
 impl MBC for MBC1 {
-    fn read_rom(&self, a: u16) -> u8 {
+    fn read_rom(&self, address: u16) -> u8 {
 
-        let idx = if a < 0x4000 {
-            a as usize
-        } else {
-            self.rombank * 0x4000 | ((a as usize) & 0x3FFF)
-        };
+        let index =
+            if address < 0x4000 {
+                address as usize
+            } else {
+                self.rombank * 0x4000 | ((address as usize) & 0x3FFF)
+            };
 
-        *self.rom.get(idx).unwrap_or(&0)
+        let not_found_value = 0u8;
+
+        // get this position value, or 0 if it's not found
+        let rom_byte = self.rom.get(index).unwrap_or(&not_found_value);
+
+        *rom_byte
     }
 
     fn write_rom(&mut self, a: u16, v: u8) {
         match a {
             0x0000 ... 0x1FFF => {
-                self.ram_on = v == 0x0A;
+                self.ram_on = (v == 0x0A);
             },
 
             0x2000 ... 0x3FFF => {
-                self.rombank = (self.rombank & 0x60)
-
-                    |
-
-                match (v as usize) & 0x1F {
-                    0 => 1,
-                    n => n
-                }
+                self.rombank =
+                    (self.rombank & 0x60) |
+                    match (v as usize) & 0x1F {
+                        0 => 1,
+                        n => n
+                    }
             },
 
             0x4000 ... 0x5FFF => {
