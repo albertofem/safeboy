@@ -51,6 +51,7 @@ impl Timer {
 
     pub fn do_cycle(&mut self, ticks: u32) {
         self.internaldiv += ticks;
+
         while self.internaldiv >= 256 {
             self.divider = self.divider.wrapping_add(1);
             self.internaldiv -= 256;
@@ -61,10 +62,12 @@ impl Timer {
 
             while self.internalcnt >= self.step {
                 self.counter = self.counter.wrapping_add(1);
+
                 if self.counter == 0 {
                     self.counter = self.modulo;
                     self.interrupt |= 0x04;
                 }
+
                 self.internalcnt -= self.step;
             }
         }

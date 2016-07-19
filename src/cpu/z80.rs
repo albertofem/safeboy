@@ -182,37 +182,41 @@ impl Z80 {
 
         self.mmu.interrupt_flag &= !(1 << n);
 
-        let pc = self.registers.pc;
+        let pc = self.registers.program_counter;
 
         self.push_stack(pc);
 
-        self.registers.pc = 0x0040 | ((n as u16) << 3);
+        self.registers.program_counter = 0x0040 | ((n as u16) << 3);
 
         // this operation takes 4 cycles
         return 4
     }
 
     fn push_stack(&mut self, value: u16) {
-        self.registers.sp -= 2;
-        self.mmu.write_word(self.registers.sp, value);
+        self.registers.stack_pointer -= 2;
+
+        self.mmu.write_word(
+            self.registers.stack_pointer,
+            value
+        );
     }
 
     fn pop_stack(&mut self) -> u16 {
-        let res = self.mmu.read_word(self.registers.sp);
-        self.registers.sp += 2;
+        let res = self.mmu.read_word(self.registers.stack_pointer);
+        self.registers.stack_pointer += 2;
         res
     }
 
     fn read_byte(&mut self) -> u8 {
-        let b = self.mmu.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let b = self.mmu.read_byte(self.registers.program_counter);
+        self.registers.program_counter += 1;
 
         b
     }
 
     fn read_word(&mut self) -> u16 {
-        let w = self.mmu.read_word(self.registers.pc);
-        self.registers.pc += 2;
+        let w = self.mmu.read_word(self.registers.program_counter);
+        self.registers.program_counter += 2;
         w
     }
 
@@ -269,7 +273,7 @@ impl Z80 {
 
             0x08 => {
                 let a = self.read_word();
-                self.mmu.write_word(a, self.registers.sp);
+                self.mmu.write_word(a, self.registers.stack_pointer);
                 5
             },
 
@@ -393,11 +397,11 @@ impl Z80 {
             },
 
             0x20 => {
-                if !self.registers.get_flag(Z) {
+                if !self.registers.is_flag_set(Z) {
                     self.cpu_jr();
                     3
                 } else {
-                    self.registers.pc += 1;
+                    self.registers.program_counter += 1;
                     2
                 }
             },
@@ -409,7 +413,11 @@ impl Z80 {
             },
 
             0x22 => {
-                self.mmu.write_byte(self.registers.hli(), self.registers.a);
+                self.mmu.write_byte(
+                    self.registers.hl_increase(),
+                    self.registers.a
+                );
+
                 2
             },
 
@@ -440,11 +448,11 @@ impl Z80 {
             },
 
             0x28 => {
-                if self.registers.get_flag(Z) {
+                if self.registers.is_flag_set(Z) {
                     self.cpu_jr();
                     3
                 } else {
-                    self.registers.pc += 1;
+                    self.registers.program_counter += 1;
                     2
                 }
             },
@@ -456,7 +464,7 @@ impl Z80 {
             },
 
             0x2A => {
-                self.registers.a = self.mmu.read_byte(self.registers.hli());
+                self.registers.a = self.mmu.read_byte(self.registers.hl_increase());
                 2
             },
 
@@ -489,27 +497,30 @@ impl Z80 {
             },
 
             0x30 => {
-                if !self.registers.get_flag(C) {
+                if !self.registers.is_flag_set(C) {
                     self.cpu_jr();
                     3
                 } else {
-                    self.registers.pc += 1;
+                    self.registers.program_counter += 1;
                     2
                 }
             },
 
             0x31 => {
-                self.registers.sp = self.read_word();
+                self.registers.stack_pointer = self.read_word();
                 3
             },
 
             0x32 => {
-                self.mmu.write_byte(self.registers.hld(), self.registers.a);
+                self.mmu.write_byte(
+                    self.registers.hl_decrease(),
+                    self.registers.a
+                );
                 2
             },
 
             0x33 => {
-                self.registers.sp = self.registers.sp.wrapping_add(1);
+                self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
                 2
             },
 
@@ -543,28 +554,28 @@ impl Z80 {
             },
 
             0x38 => {
-                if self.registers.get_flag(C) {
+                if self.registers.is_flag_set(C) {
                     self.cpu_jr();
                     3
                 } else {
-                    self.registers.pc += 1;
+                    self.registers.program_counter += 1;
                     2
                 }
             },
 
             0x39 => {
-                let v = self.registers.sp;
+                let v = self.registers.stack_pointer;
                 self.alu_add16(v);
                 2
             },
 
             0x3A => {
-                self.registers.a = self.mmu.read_byte(self.registers.hld());
+                self.registers.a = self.mmu.read_byte(self.registers.hl_decrease());
                 2
             },
 
             0x3B => {
-                self.registers.sp = self.registers.sp.wrapping_sub(1);
+                self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
                 2
             },
 
@@ -584,7 +595,7 @@ impl Z80 {
             },
 
             0x3F => {
-                let v = !self.registers.get_flag(C);
+                let v = !self.registers.is_flag_set(C);
                 self.registers.flag(C, v);
                 self.registers.flag(H, false);
                 self.registers.flag(N, false);
@@ -610,278 +621,278 @@ impl Z80 {
                 1
             },
 
-            
+
             0x44 => {
                 self.registers.b = self.registers.h;
                 1
             },
 
-            
+
             0x45 => {
                 self.registers.b = self.registers.l;
                 1
             },
 
-            
+
             0x46 => {
                 self.registers.b = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x47 => {
                 self.registers.b = self.registers.a;
                 1
             },
 
-            
+
             0x48 => {
                 self.registers.c = self.registers.b;
                 1
             },
 
-            
+
             0x49 => {
                 1
             },
 
-            
+
             0x4A => {
                 self.registers.c = self.registers.d;
                 1
             },
 
-            
+
             0x4B => {
                 self.registers.c = self.registers.e;
                 1
             },
 
-            
+
             0x4C => {
                 self.registers.c = self.registers.h;
                 1
             },
 
-            
+
             0x4D => {
                 self.registers.c = self.registers.l;
                 1
             },
 
-            
+
             0x4E => {
                 self.registers.c = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x4F => {
                 self.registers.c = self.registers.a;
                 1
             },
 
-            
+
             0x50 => {
                 self.registers.d = self.registers.b;
                 1
             },
 
-            
+
             0x51 => {
                 self.registers.d = self.registers.c;
                 1
             },
 
-            
+
             0x52 => {
                 1
             },
 
-            
+
             0x53 => {
                 self.registers.d = self.registers.e;
                 1
             },
 
-            
+
             0x54 => {
                 self.registers.d = self.registers.h;
                 1
             },
 
-            
+
             0x55 => {
                 self.registers.d = self.registers.l;
                 1
             },
 
-            
+
             0x56 => {
                 self.registers.d = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x57 => {
                 self.registers.d = self.registers.a;
                 1
             },
 
-            
+
             0x58 => {
                 self.registers.e = self.registers.b;
                 1
             },
 
-            
+
             0x59 => {
                 self.registers.e = self.registers.c;
                 1
             },
 
-            
+
             0x5A => {
                 self.registers.e = self.registers.d;
                 1
             },
 
-            
+
             0x5B => {
                 1
             },
 
-            
+
             0x5C => {
                 self.registers.e = self.registers.h;
                 1
             },
 
-            
+
             0x5D => {
                 self.registers.e = self.registers.l;
                 1
             },
 
-            
+
             0x5E => {
                 self.registers.e = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x5F => {
                 self.registers.e = self.registers.a;
                 1
             },
 
-            
+
             0x60 => {
                 self.registers.h = self.registers.b;
                 1
             },
 
-            
+
             0x61 => {
                 self.registers.h = self.registers.c;
                 1
             },
 
-            
+
             0x62 => {
                 self.registers.h = self.registers.d;
                 1
             },
 
-            
+
             0x63 => {
                 self.registers.h = self.registers.e;
                 1
             },
 
-            
+
             0x64 => {
                 1
             },
 
-            
+
             0x65 => {
                 self.registers.h = self.registers.l;
                 1
             },
 
-            
+
             0x66 => {
                 self.registers.h = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x67 => {
                 self.registers.h = self.registers.a;
                 1
             },
 
-            
+
             0x68 => {
                 self.registers.l = self.registers.b;
                 1
             },
 
-            
+
             0x69 => {
                 self.registers.l = self.registers.c;
                 1
             },
 
-            
+
             0x6A => {
                 self.registers.l = self.registers.d;
                 1
             },
 
-            
+
             0x6B => {
                 self.registers.l = self.registers.e;
                 1
             },
 
-            
+
             0x6C => {
                 self.registers.l = self.registers.h;
                 1
             },
 
-            
+
             0x6D => {
                 1
             },
 
-            
+
             0x6E => {
                 self.registers.l = self.mmu.read_byte(self.registers.hl());
                 2
             },
 
-            
+
             0x6F => {
                 self.registers.l = self.registers.a;
                 1
             },
 
-            
+
             0x70 => {
                 self.mmu.write_byte(self.registers.hl(), self.registers.b);
                 2
             },
 
-            
+
             0x71 => {
                 self.mmu.write_byte(self.registers.hl(), self.registers.c);
                 2
             },
 
-            
+
             0x72 => {
                 self.mmu.write_byte(self.registers.hl(), self.registers.d);
                 2
@@ -1280,8 +1291,8 @@ impl Z80 {
             },
 
             0xC0 => {
-                if !self.registers.get_flag(Z) {
-                    self.registers.pc = self.pop_stack();
+                if !self.registers.is_flag_set(Z) {
+                    self.registers.program_counter = self.pop_stack();
                     5
                 } else {
                     2
@@ -1295,27 +1306,27 @@ impl Z80 {
             },
 
             0xC2 => {
-                if !self.registers.get_flag(Z) {
-                    self.registers.pc = self.read_word();
+                if !self.registers.is_flag_set(Z) {
+                    self.registers.program_counter = self.read_word();
                     4
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
 
             0xC3 => {
-                self.registers.pc = self.read_word();
+                self.registers.program_counter = self.read_word();
                 4
             },
 
             0xC4 => {
-                if !self.registers.get_flag(Z) {
-                    self.push_stack(oldregs.pc + 2);
-                    self.registers.pc = self.read_word();
+                if !self.registers.is_flag_set(Z) {
+                    self.push_stack(oldregs.program_counter + 2);
+                    self.registers.program_counter = self.read_word();
                     6
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
@@ -1333,14 +1344,14 @@ impl Z80 {
             },
 
             0xC7 => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x00;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x00;
                 4
             },
 
             0xC8 => {
-                if self.registers.get_flag(Z) {
-                    self.registers.pc = self.pop_stack();
+                if self.registers.is_flag_set(Z) {
+                    self.registers.program_counter = self.pop_stack();
                     5
                 } else {
                     2
@@ -1348,16 +1359,16 @@ impl Z80 {
             },
 
             0xC9 => {
-                self.registers.pc = self.pop_stack();
+                self.registers.program_counter = self.pop_stack();
                 4
             },
 
             0xCA => {
-                if self.registers.get_flag(Z) {
-                    self.registers.pc = self.read_word();
+                if self.registers.is_flag_set(Z) {
+                    self.registers.program_counter = self.read_word();
                     4
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
@@ -1369,19 +1380,31 @@ impl Z80 {
             },
 
             0xCC => {
-                if self.registers.get_flag(Z) {
-                    self.push_stack(oldregs.pc + 2);
-                    self.registers.pc = self.read_word();
+                if self.registers.is_flag_set(Z) {
+                    self.push_stack(oldregs.program_counter + 2);
+                    self.registers.program_counter = self.read_word();
                     6
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
 
+            // Commented example of stack work, not using
+            // code functions for clarity
             0xCD => {
-                self.push_stack(oldregs.pc + 2);
-                self.registers.pc = self.read_word();
+                // decrease current stack pointer to the current function
+                self.registers.stack_pointer -= 2;
+
+                // write address of the current instruction forward
+                self.mmu.write_word(
+                    self.registers.stack_pointer,
+                    oldregs.program_counter + 2
+                );
+
+                // point the program counter to the current function
+                self.registers.program_counter = self.read_word();
+
                 6
             },
 
@@ -1392,14 +1415,14 @@ impl Z80 {
             },
 
             0xCF => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x08;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x08;
                 4
             },
 
             0xD0 => {
-                if !self.registers.get_flag(C) {
-                    self.registers.pc = self.pop_stack();
+                if !self.registers.is_flag_set(C) {
+                    self.registers.program_counter = self.pop_stack();
                     5
                 } else {
                     2
@@ -1413,22 +1436,22 @@ impl Z80 {
             },
 
             0xD2 => {
-                if !self.registers.get_flag(C) {
-                    self.registers.pc = self.read_word();
+                if !self.registers.is_flag_set(C) {
+                    self.registers.program_counter = self.read_word();
                     4
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
 
             0xD4 => {
-                if !self.registers.get_flag(C) {
-                    self.push_stack(oldregs.pc + 2);
-                    self.registers.pc = self.read_word();
+                if !self.registers.is_flag_set(C) {
+                    self.push_stack(oldregs.program_counter + 2);
+                    self.registers.program_counter = self.read_word();
                     6
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
@@ -1446,14 +1469,14 @@ impl Z80 {
             },
 
             0xD7 => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x10;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x10;
                 4
             },
 
             0xD8 => {
-                if self.registers.get_flag(C) {
-                    self.registers.pc = self.pop_stack();
+                if self.registers.is_flag_set(C) {
+                    self.registers.program_counter = self.pop_stack();
                     5
                 } else {
                     2
@@ -1461,28 +1484,28 @@ impl Z80 {
             },
 
             0xD9 => {
-                self.registers.pc = self.pop_stack();
+                self.registers.program_counter = self.pop_stack();
                 self.set_enable_interrupts = 1;
                 4
             },
 
             0xDA => {
-                if self.registers.get_flag(C) {
-                    self.registers.pc = self.read_word();
+                if self.registers.is_flag_set(C) {
+                    self.registers.program_counter = self.read_word();
                     4
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
 
             0xDC => {
-                if self.registers.get_flag(C) {
-                    self.push_stack(oldregs.pc + 2);
-                    self.registers.pc = self.read_word();
+                if self.registers.is_flag_set(C) {
+                    self.push_stack(oldregs.program_counter + 2);
+                    self.registers.program_counter = self.read_word();
                     6
                 } else {
-                    self.registers.pc += 2;
+                    self.registers.program_counter += 2;
                     3
                 }
             },
@@ -1494,8 +1517,8 @@ impl Z80 {
             },
 
             0xDF => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x18;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x18;
                 4
             },
 
@@ -1529,18 +1552,18 @@ impl Z80 {
             },
 
             0xE7 => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x20;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x20;
                 4
             },
 
             0xE8 => {
-                self.registers.sp = self.alu_add16imm(oldregs.sp);
+                self.registers.stack_pointer = self.alu_add16imm(oldregs.stack_pointer);
                 4
             },
 
             0xE9 => {
-                self.registers.pc = self.registers.hl();
+                self.registers.program_counter = self.registers.hl();
                 1
             },
 
@@ -1557,8 +1580,8 @@ impl Z80 {
             },
 
             0xEF => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x28;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x28;
                 4
             },
 
@@ -1597,52 +1620,52 @@ impl Z80 {
             },
 
             0xF7 => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x30;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x30;
                 4
             },
 
-            
+
             0xF8 => {
-                let r = self.alu_add16imm(oldregs.sp);
+                let r = self.alu_add16imm(oldregs.stack_pointer);
                 self.registers.set_hl(r);
                 3
             },
 
-            
+
             0xF9 => {
-                self.registers.sp = self.registers.hl();
+                self.registers.stack_pointer = self.registers.hl();
                 2
             },
 
-            
+
             0xFA => {
                 let a = self.read_word();
                 self.registers.a = self.mmu.read_byte(a);
                 4
             },
 
-            
+
             0xFB => {
                 self.set_enable_interrupts = 2;
                 1
             },
 
-            
+
             0xFE => {
                 let v = self.read_byte();
                 self.alu_compare(v);
                 2
             },
 
-            
+
             0xFF => {
-                self.push_stack(oldregs.pc);
-                self.registers.pc = 0x38;
+                self.push_stack(oldregs.program_counter);
+                self.registers.program_counter = 0x38;
                 4
             },
 
-            other => panic!("Instruction {:2X} is not implemented", other),
+            other => panic!("CPU instruction not implemented: {:2X}", other),
         }
     }
 
@@ -1677,298 +1700,298 @@ impl Z80 {
                 self.registers.e = self.alu_rlc(oldregs.e);
                 2
             },
-            
+
             0x04 => {
-                self.registers.h = self.alu_rlc(oldregs.h); 
-                2 
+                self.registers.h = self.alu_rlc(oldregs.h);
+                2
             },
-            
+
             0x05 => {
-                self.registers.l = self.alu_rlc(oldregs.l); 
-                2 
+                self.registers.l = self.alu_rlc(oldregs.l);
+                2
             },
-            
+
             0x06 => {
-                let a = self.registers.hl(); 
-                let v = self.mmu.read_byte(a); 
-                let v2 = self.alu_rlc(v); 
-                self.mmu.write_byte(a, v2); 
-                4 
+                let a = self.registers.hl();
+                let v = self.mmu.read_byte(a);
+                let v2 = self.alu_rlc(v);
+                self.mmu.write_byte(a, v2);
+                4
             },
 
             0x07 => {
-                self.registers.a = self.alu_rlc(oldregs.a); 
-                2 
+                self.registers.a = self.alu_rlc(oldregs.a);
+                2
             },
 
             0x08 => {
-                self.registers.b = self.alu_rrc(oldregs.b); 
-                2 
+                self.registers.b = self.alu_rrc(oldregs.b);
+                2
             },
 
             0x09 => {
                 self.registers.c = self.alu_rrc(oldregs.c);
-                2 
+                2
             },
 
             0x0A => {
                 self.registers.d = self.alu_rrc(oldregs.d);
-                2 
+                2
             },
 
             0x0B => {
                 self.registers.e = self.alu_rrc(oldregs.e);
-                2 
+                2
             },
 
             0x0C => {
                 self.registers.h = self.alu_rrc(oldregs.h);
-                2 
+                2
             },
 
             0x0D => {
                 self.registers.l = self.alu_rrc(oldregs.l);
-                2 
+                2
             },
 
             0x0E => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rrc(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x0F => {
                 self.registers.a = self.alu_rrc(oldregs.a);
-                2 
+                2
             },
 
             0x10 => {
                 self.registers.b = self.alu_rl(oldregs.b);
-                2 
+                2
             },
 
             0x11 => {
                 self.registers.c = self.alu_rl(oldregs.c);
-                2 
+                2
             },
 
             0x12 => {
                 self.registers.d = self.alu_rl(oldregs.d);
-                2 
+                2
             },
 
             0x13 => {
                 self.registers.e = self.alu_rl(oldregs.e);
-                2 
+                2
             },
 
             0x14 => {
                 self.registers.h = self.alu_rl(oldregs.h);
-                2 
+                2
             },
 
             0x15 => {
                 self.registers.l = self.alu_rl(oldregs.l);
-                2 
+                2
             },
 
             0x16 => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rl(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x17 => {
                 self.registers.a = self.alu_rl(oldregs.a);
-                2 
+                2
             },
 
             0x18 => {
                 self.registers.b = self.alu_rr(oldregs.b);
-                2 
+                2
             },
 
             0x19 => {
                 self.registers.c = self.alu_rr(oldregs.c);
-                2 
+                2
             },
 
             0x1A => {
                 self.registers.d = self.alu_rr(oldregs.d);
-                2 
+                2
             },
 
             0x1B => {
                 self.registers.e = self.alu_rr(oldregs.e);
-                2 
+                2
             },
 
             0x1C => {
                 self.registers.h = self.alu_rr(oldregs.h);
-                2 
+                2
             },
 
             0x1D => {
                 self.registers.l = self.alu_rr(oldregs.l);
-                2 
+                2
             },
 
             0x1E => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_rr(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x1F => {
                 self.registers.a = self.alu_rr(oldregs.a);
-                2 
+                2
             },
 
             0x20 => {
                 self.registers.b = self.alu_sla(oldregs.b);
-                2 
+                2
             },
 
             0x21 => {
                 self.registers.c = self.alu_sla(oldregs.c);
-                2 
+                2
             },
 
             0x22 => {
                 self.registers.d = self.alu_sla(oldregs.d);
-                2 
+                2
             },
 
             0x23 => {
                 self.registers.e = self.alu_sla(oldregs.e);
-                2 
+                2
             },
 
             0x24 => {
                 self.registers.h = self.alu_sla(oldregs.h);
-                2 
+                2
             },
 
             0x25 => {
                 self.registers.l = self.alu_sla(oldregs.l);
-                2 
+                2
             },
 
             0x26 => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sla(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x27 => {
                 self.registers.a = self.alu_sla(oldregs.a);
-                2 
+                2
             },
 
             0x28 => {
                 self.registers.b = self.alu_sra(oldregs.b);
-                2 
+                2
             },
 
             0x29 => {
                 self.registers.c = self.alu_sra(oldregs.c);
-                2 
+                2
             },
 
             0x2A => {
                 self.registers.d = self.alu_sra(oldregs.d);
-                2 
+                2
             },
 
             0x2B => {
                 self.registers.e = self.alu_sra(oldregs.e);
-                2 
+                2
             },
 
             0x2C => {
                 self.registers.h = self.alu_sra(oldregs.h);
-                2 
+                2
             },
 
             0x2D => {
                 self.registers.l = self.alu_sra(oldregs.l);
-                2 
+                2
             },
 
             0x2E => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_sra(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x2F => {
                 self.registers.a = self.alu_sra(oldregs.a);
-                2 
+                2
             },
 
             0x30 => {
                 self.registers.b = self.alu_swap(oldregs.b);
-                2 
+                2
             },
 
             0x31 => {
                 self.registers.c = self.alu_swap(oldregs.c);
-                2 
+                2
             },
 
             0x32 => {
                 self.registers.d = self.alu_swap(oldregs.d);
-                2 
+                2
             },
 
             0x33 => {
                 self.registers.e = self.alu_swap(oldregs.e);
-                2 
+                2
             },
 
             0x34 => {
                 self.registers.h = self.alu_swap(oldregs.h);
-                2 
+                2
             },
 
             0x35 => {
                 self.registers.l = self.alu_swap(oldregs.l);
-                2 
+                2
             },
 
             0x36 => {
                 let a = self.registers.hl(); let v = self.mmu.read_byte(a); let v2 = self.alu_swap(v); self.mmu.write_byte(a, v2);
-                4 
+                4
             },
 
             0x37 => {
                 self.registers.a = self.alu_swap(oldregs.a);
-                2 
+                2
             },
 
             0x38 => {
                 self.registers.b = self.alu_srl(oldregs.b);
-                2 
+                2
             },
 
             0x39 => {
                 self.registers.c = self.alu_srl(oldregs.c);
-                2 
+                2
             },
 
             0x3A => {
                 self.registers.d = self.alu_srl(oldregs.d);
-                2 
+                2
             },
 
             0x3B => {
                 self.registers.e = self.alu_srl(oldregs.e);
-                2 
+                2
             },
 
             0x3C => {
                 self.registers.h = self.alu_srl(oldregs.h);
-                2 
+                2
             },
 
             0x3D => {
                 self.registers.l = self.alu_srl(oldregs.l);
-                2 
+                2
             },
 
             0x3E => {
@@ -1977,376 +2000,376 @@ impl Z80 {
                 let v2 = self.alu_srl(v);
                 self.mmu.write_byte(a, v2);
 
-                4 
+                4
             },
 
             0x3F => {
                 self.registers.a = self.alu_srl(oldregs.a);
-                2 
+                2
             },
 
             0x40 => {
                 self.alu_bit(oldregs.b, 0);
-                2 
+                2
             },
 
             0x41 => {
                 self.alu_bit(oldregs.c, 0);
-                2 
+                2
             },
 
             0x42 => {
                 self.alu_bit(oldregs.d, 0);
-                2 
+                2
             },
 
             0x43 => {
                 self.alu_bit(oldregs.e, 0);
-                2 
+                2
             },
 
             0x44 => {
                 self.alu_bit(oldregs.h, 0);
-                2 
+                2
             },
 
             0x45 => {
                 self.alu_bit(oldregs.l, 0);
-                2 
+                2
             },
 
             0x46 => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 0);
-                3 
+                3
             },
 
             0x47 => {
                 self.alu_bit(oldregs.a, 0);
-                2 
+                2
             },
 
             0x48 => {
                 self.alu_bit(oldregs.b, 1);
-                2 
+                2
             },
 
             0x49 => {
                 self.alu_bit(oldregs.c, 1);
-                2 
+                2
             },
 
             0x4A => {
                 self.alu_bit(oldregs.d, 1);
-                2 
+                2
             },
 
             0x4B => {
                 self.alu_bit(oldregs.e, 1);
-                2 
+                2
             },
 
             0x4C => {
                 self.alu_bit(oldregs.h, 1);
-                2 
+                2
             },
 
             0x4D => {
                 self.alu_bit(oldregs.l, 1);
-                2 
+                2
             },
 
             0x4E => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 1);
-                3 
+                3
             },
 
             0x4F => {
                 self.alu_bit(oldregs.a, 1);
-                2 
+                2
             },
 
             0x50 => {
                 self.alu_bit(oldregs.b, 2);
-                2 
+                2
             },
 
             0x51 => {
                 self.alu_bit(oldregs.c, 2);
-                2 
+                2
             },
 
             0x52 => {
                 self.alu_bit(oldregs.d, 2);
-                2 
+                2
             },
 
             0x53 => {
                 self.alu_bit(oldregs.e, 2);
-                2 
+                2
             },
 
             0x54 => {
                 self.alu_bit(oldregs.h, 2);
-                2 
+                2
             },
 
             0x55 => {
                 self.alu_bit(oldregs.l, 2);
-                2 
+                2
             },
 
             0x56 => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 2);
 
-                3 
+                3
             },
 
             0x57 => {
                 self.alu_bit(oldregs.a, 2);
-                2 
+                2
             },
 
             0x58 => {
                 self.alu_bit(oldregs.b, 3);
-                2 
+                2
             },
 
             0x59 => {
                 self.alu_bit(oldregs.c, 3);
-                2 
+                2
             },
 
             0x5A => {
                 self.alu_bit(oldregs.d, 3);
-                2 
+                2
             },
 
             0x5B => {
                 self.alu_bit(oldregs.e, 3);
-                2 
+                2
             },
 
             0x5C => {
                 self.alu_bit(oldregs.h, 3);
-                2 
+                2
             },
 
             0x5D => {
                 self.alu_bit(oldregs.l, 3);
-                2 
+                2
             },
 
             0x5E => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 3);
 
-                3 
+                3
             },
 
             0x5F => {
                 self.alu_bit(oldregs.a, 3);
-                2 
+                2
             },
 
             0x60 => {
                 self.alu_bit(oldregs.b, 4);
-                2 
+                2
             },
 
             0x61 => {
                 self.alu_bit(oldregs.c, 4);
-                2 
+                2
             },
 
             0x62 => {
                 self.alu_bit(oldregs.d, 4);
-                2 
+                2
             },
 
             0x63 => {
                 self.alu_bit(oldregs.e, 4);
-                2 
+                2
             },
 
             0x64 => {
                 self.alu_bit(oldregs.h, 4);
-                2 
+                2
             },
 
             0x65 => {
                 self.alu_bit(oldregs.l, 4);
-                2 
+                2
             },
 
             0x66 => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 4);
 
-                3 
+                3
             },
 
             0x67 => {
                 self.alu_bit(oldregs.a, 4);
-                2 
+                2
             },
 
             0x68 => {
                 self.alu_bit(oldregs.b, 5);
-                2 
+                2
             },
 
             0x69 => {
                 self.alu_bit(oldregs.c, 5);
-                2 
+                2
             },
 
             0x6A => {
                 self.alu_bit(oldregs.d, 5);
-                2 
+                2
             },
 
             0x6B => {
                 self.alu_bit(oldregs.e, 5);
-                2 
+                2
             },
 
             0x6C => {
                 self.alu_bit(oldregs.h, 5);
-                2 
+                2
             },
 
             0x6D => {
                 self.alu_bit(oldregs.l, 5);
-                2 
+                2
             },
 
             0x6E => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 5);
 
-                3 
+                3
             },
 
             0x6F => {
                 self.alu_bit(oldregs.a, 5);
-                2 
+                2
             },
 
             0x70 => {
                 self.alu_bit(oldregs.b, 6);
-                2 
+                2
             },
 
             0x71 => {
                 self.alu_bit(oldregs.c, 6);
-                2 
+                2
             },
 
             0x72 => {
                 self.alu_bit(oldregs.d, 6);
-                2 
+                2
             },
 
             0x73 => {
                 self.alu_bit(oldregs.e, 6);
-                2 
+                2
             },
 
             0x74 => {
                 self.alu_bit(oldregs.h, 6);
-                2 
+                2
             },
 
             0x75 => {
                 self.alu_bit(oldregs.l, 6);
-                2 
+                2
             },
 
             0x76 => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 6);
 
-                3 
+                3
             },
 
             0x77 => {
                 self.alu_bit(oldregs.a, 6);
-                2 
+                2
             },
 
             0x78 => {
                 self.alu_bit(oldregs.b, 7);
-                2 
+                2
             },
 
             0x79 => {
                 self.alu_bit(oldregs.c, 7);
-                2 
+                2
             },
 
             0x7A => {
                 self.alu_bit(oldregs.d, 7);
-                2 
+                2
             },
 
             0x7B => {
                 self.alu_bit(oldregs.e, 7);
-                2 
+                2
             },
 
             0x7C => {
                 self.alu_bit(oldregs.h, 7);
-                2 
+                2
             },
 
             0x7D => {
                 self.alu_bit(oldregs.l, 7);
-                2 
+                2
             },
 
             0x7E => {
                 let v = self.mmu.read_byte(self.registers.hl());
                 self.alu_bit(v, 7);
 
-                3 
+                3
             },
 
             0x7F => {
                 self.alu_bit(oldregs.a, 7);
-                2 
+                2
             },
 
             0x80 => {
                 self.registers.b = self.registers.b & !(1 << 0);
-                2 
+                2
             },
 
             0x81 => {
                 self.registers.c = self.registers.c & !(1 << 0);
-                2 
+                2
             },
 
             0x82 => {
                 self.registers.d = self.registers.d & !(1 << 0);
-                2 
+                2
             },
 
             0x83 => {
                 self.registers.e = self.registers.e & !(1 << 0);
-                2 
+                2
             },
 
             0x84 => {
                 self.registers.h = self.registers.h & !(1 << 0);
-                2 
+                2
             },
 
             0x85 => {
                 self.registers.l = self.registers.l & !(1 << 0);
-                2 
+                2
             },
 
             0x86 => {
@@ -2354,42 +2377,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 0);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0x87 => {
                 self.registers.a = self.registers.a & !(1 << 0);
-                2 
+                2
             },
 
             0x88 => {
                 self.registers.b = self.registers.b & !(1 << 1);
-                2 
+                2
             },
 
             0x89 => {
                 self.registers.c = self.registers.c & !(1 << 1);
-                2 
+                2
             },
 
             0x8A => {
                 self.registers.d = self.registers.d & !(1 << 1);
-                2 
+                2
             },
 
             0x8B => {
                 self.registers.e = self.registers.e & !(1 << 1);
-                2 
+                2
             },
 
             0x8C => {
                 self.registers.h = self.registers.h & !(1 << 1);
-                2 
+                2
             },
 
             0x8D => {
                 self.registers.l = self.registers.l & !(1 << 1);
-                2 
+                2
             },
 
             0x8E => {
@@ -2397,42 +2420,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 1);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0x8F => {
                 self.registers.a = self.registers.a & !(1 << 1);
-                2 
+                2
             },
 
             0x90 => {
                 self.registers.b = self.registers.b & !(1 << 2);
-                2 
+                2
             },
 
             0x91 => {
                 self.registers.c = self.registers.c & !(1 << 2);
-                2 
+                2
             },
 
             0x92 => {
                 self.registers.d = self.registers.d & !(1 << 2);
-                2 
+                2
             },
 
             0x93 => {
                 self.registers.e = self.registers.e & !(1 << 2);
-                2 
+                2
             },
 
             0x94 => {
                 self.registers.h = self.registers.h & !(1 << 2);
-                2 
+                2
             },
 
             0x95 => {
                 self.registers.l = self.registers.l & !(1 << 2);
-                2 
+                2
             },
 
             0x96 => {
@@ -2440,42 +2463,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 2);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0x97 => {
                 self.registers.a = self.registers.a & !(1 << 2);
-                2 
+                2
             },
 
             0x98 => {
                 self.registers.b = self.registers.b & !(1 << 3);
-                2 
+                2
             },
 
             0x99 => {
                 self.registers.c = self.registers.c & !(1 << 3);
-                2 
+                2
             },
 
             0x9A => {
                 self.registers.d = self.registers.d & !(1 << 3);
-                2 
+                2
             },
 
             0x9B => {
                 self.registers.e = self.registers.e & !(1 << 3);
-                2 
+                2
             },
 
             0x9C => {
                 self.registers.h = self.registers.h & !(1 << 3);
-                2 
+                2
             },
 
             0x9D => {
                 self.registers.l = self.registers.l & !(1 << 3);
-                2 
+                2
             },
 
             0x9E => {
@@ -2483,42 +2506,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 3);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0x9F => {
                 self.registers.a = self.registers.a & !(1 << 3);
-                2 
+                2
             },
 
             0xA0 => {
                 self.registers.b = self.registers.b & !(1 << 4);
-                2 
+                2
             },
 
             0xA1 => {
                 self.registers.c = self.registers.c & !(1 << 4);
-                2 
+                2
             },
 
             0xA2 => {
                 self.registers.d = self.registers.d & !(1 << 4);
-                2 
+                2
             },
 
             0xA3 => {
                 self.registers.e = self.registers.e & !(1 << 4);
-                2 
+                2
             },
 
             0xA4 => {
                 self.registers.h = self.registers.h & !(1 << 4);
-                2 
+                2
             },
 
             0xA5 => {
                 self.registers.l = self.registers.l & !(1 << 4);
-                2 
+                2
             },
 
             0xA6 => {
@@ -2526,42 +2549,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 4);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xA7 => {
                 self.registers.a = self.registers.a & !(1 << 4);
-                2 
+                2
             },
 
             0xA8 => {
                 self.registers.b = self.registers.b & !(1 << 5);
-                2 
+                2
             },
 
             0xA9 => {
                 self.registers.c = self.registers.c & !(1 << 5);
-                2 
+                2
             },
 
             0xAA => {
                 self.registers.d = self.registers.d & !(1 << 5);
-                2 
+                2
             },
 
             0xAB => {
                 self.registers.e = self.registers.e & !(1 << 5);
-                2 
+                2
             },
 
             0xAC => {
                 self.registers.h = self.registers.h & !(1 << 5);
-                2 
+                2
             },
 
             0xAD => {
                 self.registers.l = self.registers.l & !(1 << 5);
-                2 
+                2
             },
 
             0xAE => {
@@ -2569,42 +2592,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 5);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xAF => {
                 self.registers.a = self.registers.a & !(1 << 5);
-                2 
+                2
             },
 
             0xB0 => {
                 self.registers.b = self.registers.b & !(1 << 6);
-                2 
+                2
             },
 
             0xB1 => {
                 self.registers.c = self.registers.c & !(1 << 6);
-                2 
+                2
             },
 
             0xB2 => {
                 self.registers.d = self.registers.d & !(1 << 6);
-                2 
+                2
             },
 
             0xB3 => {
                 self.registers.e = self.registers.e & !(1 << 6);
-                2 
+                2
             },
 
             0xB4 => {
                 self.registers.h = self.registers.h & !(1 << 6);
-                2 
+                2
             },
 
             0xB5 => {
                 self.registers.l = self.registers.l & !(1 << 6);
-                2 
+                2
             },
 
             0xB6 => {
@@ -2612,84 +2635,84 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) & !(1 << 6);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xB7 => {
                 self.registers.a = self.registers.a & !(1 << 6);
-                2 
+                2
             },
 
             0xB8 => {
                 self.registers.b = self.registers.b & !(1 << 7);
-                2 
+                2
             },
 
             0xB9 => {
                 self.registers.c = self.registers.c & !(1 << 7);
-                2 
+                2
             },
 
             0xBA => {
                 self.registers.d = self.registers.d & !(1 << 7);
-                2 
+                2
             },
 
             0xBB => {
                 self.registers.e = self.registers.e & !(1 << 7);
-                2 
+                2
             },
 
             0xBC => {
                 self.registers.h = self.registers.h & !(1 << 7);
-                2 
+                2
             },
 
             0xBD => {
                 self.registers.l = self.registers.l & !(1 << 7);
-                2 
+                2
             },
 
             0xBE => {
                 let a = self.registers.hl();
                 let v = self.mmu.read_byte(a) & !(1 << 7);
                 self.mmu.write_byte(a, v);
-                4 
+                4
             },
 
             0xBF => {
                 self.registers.a = self.registers.a & !(1 << 7);
-                2 
+                2
             },
 
             0xC0 => {
                 self.registers.b = self.registers.b | (1 << 0);
-                2 
+                2
             },
 
             0xC1 => {
                 self.registers.c = self.registers.c | (1 << 0);
-                2 
+                2
             },
 
             0xC2 => {
                 self.registers.d = self.registers.d | (1 << 0);
-                2 
+                2
             },
 
             0xC3 => {
                 self.registers.e = self.registers.e | (1 << 0);
-                2 
+                2
             },
 
             0xC4 => {
                 self.registers.h = self.registers.h | (1 << 0);
-                2 
+                2
             },
 
             0xC5 => {
                 self.registers.l = self.registers.l | (1 << 0);
-                2 
+                2
             },
 
             0xC6 => {
@@ -2697,42 +2720,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 0);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xC7 => {
                 self.registers.a = self.registers.a | (1 << 0);
-                2 
+                2
             },
 
             0xC8 => {
                 self.registers.b = self.registers.b | (1 << 1);
-                2 
+                2
             },
 
             0xC9 => {
                 self.registers.c = self.registers.c | (1 << 1);
-                2 
+                2
             },
 
             0xCA => {
                 self.registers.d = self.registers.d | (1 << 1);
-                2 
+                2
             },
 
             0xCB => {
                 self.registers.e = self.registers.e | (1 << 1);
-                2 
+                2
             },
 
             0xCC => {
                 self.registers.h = self.registers.h | (1 << 1);
-                2 
+                2
             },
 
             0xCD => {
                 self.registers.l = self.registers.l | (1 << 1);
-                2 
+                2
             },
 
             0xCE => {
@@ -2740,42 +2763,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 1);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xCF => {
                 self.registers.a = self.registers.a | (1 << 1);
-                2 
+                2
             },
 
             0xD0 => {
                 self.registers.b = self.registers.b | (1 << 2);
-                2 
+                2
             },
 
             0xD1 => {
                 self.registers.c = self.registers.c | (1 << 2);
-                2 
+                2
             },
 
             0xD2 => {
                 self.registers.d = self.registers.d | (1 << 2);
-                2 
+                2
             },
 
             0xD3 => {
                 self.registers.e = self.registers.e | (1 << 2);
-                2 
+                2
             },
 
             0xD4 => {
                 self.registers.h = self.registers.h | (1 << 2);
-                2 
+                2
             },
 
             0xD5 => {
                 self.registers.l = self.registers.l | (1 << 2);
-                2 
+                2
             },
 
             0xD6 => {
@@ -2783,42 +2806,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 2);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xD7 => {
                 self.registers.a = self.registers.a | (1 << 2);
-                2 
+                2
             },
 
             0xD8 => {
                 self.registers.b = self.registers.b | (1 << 3);
-                2 
+                2
             },
 
             0xD9 => {
                 self.registers.c = self.registers.c | (1 << 3);
-                2 
+                2
             },
 
             0xDA => {
                 self.registers.d = self.registers.d | (1 << 3);
-                2 
+                2
             },
 
             0xDB => {
                 self.registers.e = self.registers.e | (1 << 3);
-                2 
+                2
             },
 
             0xDC => {
                 self.registers.h = self.registers.h | (1 << 3);
-                2 
+                2
             },
 
             0xDD => {
                 self.registers.l = self.registers.l | (1 << 3);
-                2 
+                2
             },
 
             0xDE => {
@@ -2826,42 +2849,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 3);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xDF => {
                 self.registers.a = self.registers.a | (1 << 3);
-                2 
+                2
             },
 
             0xE0 => {
                 self.registers.b = self.registers.b | (1 << 4);
-                2 
+                2
             },
 
             0xE1 => {
                 self.registers.c = self.registers.c | (1 << 4);
-                2 
+                2
             },
 
             0xE2 => {
                 self.registers.d = self.registers.d | (1 << 4);
-                2 
+                2
             },
 
             0xE3 => {
                 self.registers.e = self.registers.e | (1 << 4);
-                2 
+                2
             },
 
             0xE4 => {
                 self.registers.h = self.registers.h | (1 << 4);
-                2 
+                2
             },
 
             0xE5 => {
                 self.registers.l = self.registers.l | (1 << 4);
-                2 
+                2
             },
 
             0xE6 => {
@@ -2869,42 +2892,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 4);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xE7 => {
                 self.registers.a = self.registers.a | (1 << 4);
-                2 
+                2
             },
 
             0xE8 => {
                 self.registers.b = self.registers.b | (1 << 5);
-                2 
+                2
             },
 
             0xE9 => {
                 self.registers.c = self.registers.c | (1 << 5);
-                2 
+                2
             },
 
             0xEA => {
                 self.registers.d = self.registers.d | (1 << 5);
-                2 
+                2
             },
 
             0xEB => {
                 self.registers.e = self.registers.e | (1 << 5);
-                2 
+                2
             },
 
             0xEC => {
                 self.registers.h = self.registers.h | (1 << 5);
-                2 
+                2
             },
 
             0xED => {
                 self.registers.l = self.registers.l | (1 << 5);
-                2 
+                2
             },
 
             0xEE => {
@@ -2912,42 +2935,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 5);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xEF => {
                 self.registers.a = self.registers.a | (1 << 5);
-                2 
+                2
             },
 
             0xF0 => {
                 self.registers.b = self.registers.b | (1 << 6);
-                2 
+                2
             },
 
             0xF1 => {
                 self.registers.c = self.registers.c | (1 << 6);
-                2 
+                2
             },
 
             0xF2 => {
                 self.registers.d = self.registers.d | (1 << 6);
-                2 
+                2
             },
 
             0xF3 => {
                 self.registers.e = self.registers.e | (1 << 6);
-                2 
+                2
             },
 
             0xF4 => {
                 self.registers.h = self.registers.h | (1 << 6);
-                2 
+                2
             },
 
             0xF5 => {
                 self.registers.l = self.registers.l | (1 << 6);
-                2 
+                2
             },
 
             0xF6 => {
@@ -2955,42 +2978,42 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 6);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xF7 => {
                 self.registers.a = self.registers.a | (1 << 6);
-                2 
+                2
             },
 
             0xF8 => {
                 self.registers.b = self.registers.b | (1 << 7);
-                2 
+                2
             },
 
             0xF9 => {
                 self.registers.c = self.registers.c | (1 << 7);
-                2 
+                2
             },
 
             0xFA => {
                 self.registers.d = self.registers.d | (1 << 7);
-                2 
+                2
             },
 
             0xFB => {
                 self.registers.e = self.registers.e | (1 << 7);
-                2 
+                2
             },
 
             0xFC => {
                 self.registers.h = self.registers.h | (1 << 7);
-                2 
+                2
             },
 
             0xFD => {
                 self.registers.l = self.registers.l | (1 << 7);
-                2 
+                2
             },
 
             0xFE => {
@@ -2998,12 +3021,12 @@ impl Z80 {
                 let v = self.mmu.read_byte(a) | (1 << 7);
                 self.mmu.write_byte(a, v);
 
-                4 
+                4
             },
 
             0xFF => {
                 self.registers.a = self.registers.a | (1 << 7);
-                2 
+                2
             },
 
             other => panic!("Bad CB instruction: {:2X}", other),
@@ -3012,7 +3035,7 @@ impl Z80 {
 
     /// Performs an addition
     fn alu_add(&mut self, b: u8, usec: bool) {
-        let c = if usec && self.registers.get_flag(C) { 1 } else { 0 };
+        let c = if usec && self.registers.is_flag_set(C) { 1 } else { 0 };
         let a = self.registers.a;
 
         let r = a.wrapping_add(b).wrapping_add(c);
@@ -3029,7 +3052,7 @@ impl Z80 {
     ///
     /// More details in the code
     fn alu_subtract(&mut self, b: u8, usec: bool) {
-        let c = if usec && self.registers.get_flag(C) { 1 } else { 0 };
+        let c = if usec && self.registers.is_flag_set(C) { 1 } else { 0 };
         let a = self.registers.a;
 
         let r = a.wrapping_sub(b).wrapping_sub(c);
@@ -3145,7 +3168,7 @@ impl Z80 {
     /// Rotate Left (RL) operation
     fn alu_rl(&mut self, a: u8) -> u8 {
         let c = a & 0x80 == 0x80;
-        let r = (a << 1) | (if self.registers.get_flag(C) { 1 } else { 0 });
+        let r = (a << 1) | (if self.registers.is_flag_set(C) { 1 } else { 0 });
         self.alu_sr_flagupdate(r, c);
 
         return r
@@ -3163,7 +3186,7 @@ impl Z80 {
     /// Rotate Right (RR) operation
     fn alu_rr(&mut self, a: u8) -> u8 {
         let c = a & 0x01 == 0x01;
-        let r = (a >> 1) | (if self.registers.get_flag(C) { 0x80 } else { 0 });
+        let r = (a >> 1) | (if self.registers.is_flag_set(C) { 0x80 } else { 0 });
         self.alu_sr_flagupdate(r, c);
 
         return r
@@ -3217,11 +3240,11 @@ impl Z80 {
     /// Decimal Adjust Accumulator (DAA)
     fn alu_daa(&mut self) {
         let mut a = self.registers.a;
-        let mut adjust = if self.registers.get_flag(C) { 0x60 } else { 0x00 };
+        let mut adjust = if self.registers.is_flag_set(C) { 0x60 } else { 0x00 };
 
-        if self.registers.get_flag(H) { adjust |= 0x06; };
+        if self.registers.is_flag_set(H) { adjust |= 0x06; };
 
-        if !self.registers.get_flag(N) {
+        if !self.registers.is_flag_set(N) {
             if a & 0x0F > 0x09 {
                 adjust |= 0x06;
             };
@@ -3241,7 +3264,7 @@ impl Z80 {
     /// Jump Relative (JR) CPU functionality
     fn cpu_jr(&mut self) {
         let n = self.read_byte() as i8;
-        self.registers.pc = ((self.registers.pc as u32 as i32) + (n as i32)) as u16;
+        self.registers.program_counter = ((self.registers.program_counter as u32 as i32) + (n as i32)) as u16;
     }
 
     pub fn get_gpu_pixels(&self) -> &[u8] {

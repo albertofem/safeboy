@@ -9,6 +9,12 @@ const WORKING_RAM_SIZE: usize = 0x8000;
 /// High RAM (Zero Page), 127 bytes
 const HIGH_RAM_SIZE: usize = 0x7F;
 
+
+/// Memory Management Unit (MMU)
+///
+/// This is central part of the GameBoy where all the memory
+/// is stored (including the VRAM, abstracted as a GPU here, but
+/// it's actually inside the MMU chip).
 pub struct MMU {
     /// Working RAM, with 8K Byte of size
     ///
