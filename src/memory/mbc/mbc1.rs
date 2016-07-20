@@ -60,7 +60,7 @@ impl MBC for MBC1 {
     fn write_rom(&mut self, a: u16, v: u8) {
         match a {
             0x0000 ... 0x1FFF => {
-                self.ram_on = (v == 0x0A);
+                self.ram_on = v == 0x0A;
             },
 
             0x2000 ... 0x3FFF => {
