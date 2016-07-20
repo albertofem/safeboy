@@ -59,6 +59,9 @@ pub enum CpuFlag
 
 impl RegisterSet {
     pub fn new() -> RegisterSet {
+        // these register initial values are taken
+        // from original hardware (as state left by the
+        // GameBoy boot ROM)
         RegisterSet {
             a: 0b0000_0001,
             b: 0b0000_0000,
@@ -148,6 +151,9 @@ impl RegisterSet {
         self.l = (value & 0x00FF) as u8;
     }
 
+    /// Set register flags
+    ///
+    /// Set (or unset) flags by masking bits
     pub fn flag(&mut self, flags: CpuFlag, set: bool) {
         let mask = flags as u8;
 

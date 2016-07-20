@@ -5,8 +5,8 @@ pub struct MBC1 {
     ram: Vec<u8>,
     ram_on: bool,
     ram_mode: bool,
-    rombank: usize,
-    rambank: usize,
+    rom_bank: usize,
+    ram_bank: usize,
 }
 
 
@@ -29,8 +29,8 @@ impl MBC1 {
             ram: initial_ram,
             ram_on: false,
             ram_mode: false,
-            rombank: 1,
-            rambank: 0,
+            rom_bank: 1,
+            ram_bank: 0,
         }
     }
 }
@@ -42,7 +42,7 @@ impl MBC for MBC1 {
             if address < 0x4000 {
                 address as usize
             } else {
-                self.rombank * 0x4000 | ((address as usize) & 0x3FFF)
+                self.rom_bank * 0x4000 | ((address as usize) & 0x3FFF)
             };
 
         let not_found_value = 0u8;
@@ -60,8 +60,8 @@ impl MBC for MBC1 {
             },
 
             0x2000 ... 0x3FFF => {
-                self.rombank =
-                    (self.rombank & 0x60) |
+                self.rom_bank =
+                    (self.rom_bank & 0x60) |
                     match (v as usize) & 0x1F {
                         0 => 1,
                         n => n
@@ -70,9 +70,9 @@ impl MBC for MBC1 {
 
             0x4000 ... 0x5FFF => {
                 if !self.ram_mode {
-                    self.rombank = self.rombank & 0x1F | (((v as usize) & 0x03) << 5)
+                    self.rom_bank = self.rom_bank & 0x1F | (((v as usize) & 0x03) << 5)
                 } else {
-                    self.rambank = (v as usize) & 0x03;
+                    self.ram_bank = (v as usize) & 0x03;
                 }
             },
 
@@ -89,13 +89,13 @@ impl MBC for MBC1 {
             return 0
         }
 
-        let rambank = if self.ram_mode {
-            self.rambank
+        let ram_bank = if self.ram_mode {
+            self.ram_bank
         } else {
             0
         };
 
-        self.ram[(rambank * 0x2000) | ((a & 0x1FFF) as usize)]
+        self.ram[(ram_bank * 0x2000) | ((a & 0x1FFF) as usize)]
     }
 
     fn write_ram(&mut self, a: u16, v: u8) {
@@ -103,12 +103,12 @@ impl MBC for MBC1 {
             return
         }
 
-        let rambank = if self.ram_mode {
-            self.rambank
+        let ram_bank = if self.ram_mode {
+            self.ram_bank
         } else {
             0
         };
 
-        self.ram[(rambank * 0x2000) | ((a & 0x1FFF) as usize)] = v;
+        self.ram[(ram_bank * 0x2000) | ((a & 0x1FFF) as usize)] = v;
     }
 }

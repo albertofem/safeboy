@@ -150,7 +150,7 @@ impl MMU {
     /// (timer, GPU and keypad) and also cycle the GPU and the Timer
     pub fn step(&mut self, ticks: u32) {
         // cycle the timer and check for interrupts
-        self.timer.do_cycle(ticks);
+        self.timer.step(ticks);
         self.interrupt_flag |= self.timer.interrupt;
 
         // check for keypad interrupts

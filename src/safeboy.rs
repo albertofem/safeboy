@@ -8,7 +8,7 @@ fn main() {
     let matches = App::new("Safeboy")
         .version("1.0")
         .author("Alberto Fernández <albertofem@gmail.com>")
-        .about("A GameBoy cycle accurate emulator")
+        .about("A GameBoy emulator")
         .arg(Arg::with_name("ROM")
                 .help("Rom file to emulate")
                 .required(true)

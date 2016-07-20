@@ -27,7 +27,7 @@ enum Mode {
 /// This is where the all the graphics processing happens.
 /// It's also called the LCD.
 ///
-/// The GPU contains all graphic data, which is
+/// The GPU contains all graphic raw_pixels, which is
 pub struct GPU {
     /// Mode flag
     ///
@@ -59,17 +59,17 @@ pub struct GPU {
     /// When disable, the GPU won't draw the window
     window_display_enable: bool,
 
-    /// Background & Window tile data base address
+    /// Background & Window tile raw_pixels base address
     ///
     /// This indicates where is the base address at which
-    /// we can read bg and window tile data.
+    /// we can read bg and window tile raw_pixels.
     ///
     /// 0 -> 8800-97FF, 1 -> 8000-8FFF
     bg_window_tile_data_base_address: u16,
 
     /// Background tile map base address
     ///
-    /// Same as before, but for the background tilemap data
+    /// Same as before, but for the background tilemap raw_pixels
     ///
     /// 0 -> 9800-9BFF, 1 ->9C00-9FFF
     bg_tile_map_base_address: u16,
@@ -152,7 +152,7 @@ pub struct GPU {
     /// Stores the window X-coordinate position.
     window_position_x: u8,
 
-    /// Background-Window / OBJ palette shades data
+    /// Background-Window / OBJ palette shades raw_pixels
     ///
     /// These three registers assigns shades of grey (GameBoy LCD supports 4
     /// shades of grey) in order to be used by the BG, 
@@ -176,19 +176,19 @@ pub struct GPU {
 
     /// Video RAM
     ///
-    /// This is where the Background, Window and Tile data
+    /// This is where the Background, Window and Tile raw_pixels
     /// is stored for the GPU to work with.
     ///
     /// It has two address ranges:
     ///
-    /// * 8000-97FF -> Contains Tile data
-    /// * 9800-9FFF -> Background and Window data (used indistinctly)
+    /// * 8000-97FF -> Contains Tile raw_pixels
+    /// * 9800-9FFF -> Background and Window raw_pixels (used indistinctly)
     video_ram: [u8; VIDEO_RAM_SIZE],
 
     /// Object Attribute Memory (OAM)
     ///
-    /// This is where data about the sprites is stored. It contains
-    /// 160 bytes of data, which correspond with 40 sprite attributes (4
+    /// This is where raw_pixels about the sprites is stored. It contains
+    /// 160 bytes of raw_pixels, which correspond with 40 sprite attributes (4
     /// bits per sprite)
     video_object_attribute_memory: [u8; VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE],
 
@@ -201,7 +201,12 @@ pub struct GPU {
     /// * When the V-Blank period starts, during this period the VIDEO_RAM is accessible
     /// *
     pub interrupt: u8,
-    pub data: Vec<u8>
+
+    /// Raw pixels vector
+    ///
+    /// This is a list of all the calculated pixels
+    /// that will be later blit into the screen (OpenGL)
+    pub raw_pixels: Vec<u8>
 }
 
 impl GPU {
@@ -235,7 +240,7 @@ impl GPU {
             obj_1_palette_colors: [0; 4],
             video_ram: [0; VIDEO_RAM_SIZE],
             video_object_attribute_memory: [0; VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE],
-            data: vec![0; WIDTH * HEIGHT * 3],
+            raw_pixels: vec![0; WIDTH * HEIGHT * 3],
             bg_priority: [PrioType::Normal; WIDTH],
             interrupt: 0,
         }
@@ -272,25 +277,36 @@ impl GPU {
             ticks -= gpu_ticks;
 
             if self.clock >= 456 {
+                // retrack the clock by
                 self.clock -= 456;
-                self.line = (self.line + 1) % 154;
+
+                // advance by one line
+                self.line = self.line.wrapping_add(1);
+
 
                 self.check_interrupt_lyc();
 
-                if self.line >= 144 && self.mode != Mode::VerticalBlank {
+                // we reach the last line, we need to change mode to vertical
+                // blank to start a new screen calculation
+                if self.line >= HEIGHT as u8 && self.mode != Mode::VerticalBlank {
                     self.change_mode(Mode::VerticalBlank);
                 }
             }
 
-            if self.line < 144 {
+            if self.line < HEIGHT as u8 {
+                // under 80 cycles, we are still reading OAM
                 if self.clock <= 80 {
                     if self.mode != Mode::OAMRead {
                         self.change_mode(Mode::OAMRead);
                     }
+                // under 80 (OAM reading) + 172 (VRAM reading), we are still
+                // in VRAM reading mode
                 } else if self.clock <= (80 + 172) {
                     if self.mode != Mode::VRAMRead {
                         self.change_mode(Mode::VRAMRead);
                     }
+                // if not, we are in horizontal blank (we finished rendering
+                // one line)
                 } else {
                     if self.mode != Mode::HorizontalBlank {
                         self.change_mode(Mode::HorizontalBlank);
@@ -346,7 +362,7 @@ impl GPU {
                     self.mode as u8
             },
 
-            // the following reads maps 1:1 to the rest of data
+            // the following reads maps 1:1 to the rest of raw_pixels
             // found in the GPU
             0xFF42 => self.scroll_position_y,
 
@@ -382,7 +398,7 @@ impl GPU {
     /// perform a variety of changes, described on the code.
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
-            // manipulates the video ram data. We apply the AND & operator
+            // manipulates the video ram raw_pixels. We apply the AND & operator
             // in order to map the hex address requested to our 0-indexed vector
             0x8000 ... 0x9FFF => self.video_ram[address as usize & 0x1FFF] = value,
 
@@ -446,12 +462,21 @@ impl GPU {
         }
     }
 
+    /// Changes GPU mode
+    /// 
+    /// This method will change the current GPU mode and perform
+    /// each mode operations as follow:
+    /// 
+    /// * Horizontal blank: render line
+    /// * Vertical blank: perform interrupt
+    /// * OAM read: perform interrupt
+    /// * VRAM read: nothing to do
     fn change_mode(&mut self, mode: Mode) {
         self.mode = mode;
 
         let interrupt = match self.mode {
             Mode::HorizontalBlank => {
-                self.render_scan();
+                self.render_line();
                 self.horizontal_blank_interrupt
             },
             Mode::VerticalBlank => {
@@ -536,16 +561,16 @@ impl GPU {
         self.line = 0;
         self.mode = Mode::HorizontalBlank;
 
-        for v in self.data.iter_mut() {
+        for v in self.raw_pixels.iter_mut() {
             *v = 255;
         }
     }
 
     fn update_palette_colors(&mut self) {
         for i in 0 .. 4 {
-            self.bg_palette_colors[i] = GPU::get_monochrome_rgb_value(self.bg_palette_data, i);
-            self.obj_0_palette_colors[i] = GPU::get_monochrome_rgb_value(self.obj_0_palette_data, i);
-            self.obj_1_palette_colors[i] = GPU::get_monochrome_rgb_value(self.obj_1_palette_data, i);
+            self.bg_palette_colors[i]       = GPU::get_monochrome_rgb_value(self.bg_palette_data, i);
+            self.obj_0_palette_colors[i]    = GPU::get_monochrome_rgb_value(self.obj_0_palette_data, i);
+            self.obj_1_palette_colors[i]    = GPU::get_monochrome_rgb_value(self.obj_1_palette_data, i);
         }
     }
 
@@ -558,9 +583,16 @@ impl GPU {
         }
     }
 
-    fn render_scan(&mut self) {
+    /// Render a line
+    ///
+    /// In this method we render a line by first
+    /// drawing the background/window and then drawing
+    /// the sprites on top of that
+    fn render_line(&mut self) {
+        // reset all pixels and bg priority in for the current line
+        // (current line is a class property, not showed here)
         for x in 0 .. WIDTH {
-            self.set_color(x, 255);
+            self.calculate_pixel(x, 255);
             self.bg_priority[x] = PrioType::Normal;
         }
 
@@ -568,13 +600,13 @@ impl GPU {
         self.draw_sprites();
     }
 
-    /// Set a pixel color
-    fn set_color(&mut self, position_x: usize, color: u8) {
+    /// Calculates a pixel
+    fn calculate_pixel(&mut self, position_x: usize, color: u8) {
         let position_y = self.line as usize;
 
-        self.data[position_y * WIDTH * 3 + position_x * 3 + 0] = color;
-        self.data[position_y * WIDTH * 3 + position_x * 3 + 1] = color;
-        self.data[position_y * WIDTH * 3 + position_x * 3 + 2] = color;
+        self.raw_pixels[position_y * WIDTH * 3 + position_x * 3 + 0] = color;
+        self.raw_pixels[position_y * WIDTH * 3 + position_x * 3 + 1] = color;
+        self.raw_pixels[position_y * WIDTH * 3 + position_x * 3 + 2] = color;
     }
 
     /// Draws the background and window
@@ -603,7 +635,10 @@ impl GPU {
         // calculate the window tile
         let window_tile_y = (window_position_y as u16 >> 3) & 31;
 
+        // calculate the background Y position by adding
+        // the current line to the current scroll Y position
         let background_y = self.scroll_position_y.wrapping_add(self.line);
+
         let background_tile_y = (background_y as u16 >> 3) & 31;
 
         for x in 0 .. WIDTH {
@@ -630,6 +665,11 @@ impl GPU {
         let window_position_x = - ((self.window_position_x as i32) - 7) + (x as i32);
         let background_x = self.scroll_position_x as u32 + x as u32;
 
+        // calculate tile map base addresses
+        // and positions inside the VRAM.
+        // these values will be used for:
+        // 1. calculate the tile number from VRAM memory
+        // 2. calculate tile address to fetch raw data from VRAM
         let (
             tile_map_base_address,
             tile_y,
@@ -703,7 +743,7 @@ impl GPU {
 
         let color = self.bg_palette_colors[color_number];
 
-        self.set_color(x, color);
+        self.calculate_pixel(x, color);
     }
 
     fn draw_sprites(&mut self) {
@@ -735,7 +775,7 @@ impl GPU {
             // rendering options, that can be set by game programmers.
             // this is done by bit shifting the options stored (as hex)
             // and converting to bools we will be using
-            let flags = self.read_byte(sprite_address + 3) as usize;
+            let flags = self.read_byte(sprite_address + 3) as usize; // flags are
             let useobj_1_palette_colors: bool = flags & (1 << 4) != 0;
             let xflip: bool = flags & (1 << 5) != 0;
             let yflip: bool = flags & (1 << 6) != 0;
@@ -753,6 +793,8 @@ impl GPU {
                 continue
             }
 
+            // calculate tile Y position by checking
+            // if the sprite is Y flipped
             let tile_y: u16 =
                 if yflip {
                     (sprite_size - 1 - (line - spritey)) as u16
@@ -760,6 +802,8 @@ impl GPU {
                     (line - spritey) as u16
                 };
 
+            // calculate base address where data for this sprite
+            // is stored
             let tile_address = 0x8000u16 + tile_number * 16 + tile_y * 2;
 
             let (b1, b2) = (
@@ -768,10 +812,13 @@ impl GPU {
             );
 
             for x in 0 .. 8 {
+                // check sprite pixel still shows on the screen
                 if spritex + x < 0 || spritex + x >= (WIDTH as i32) {
                     continue
                 }
 
+                // calculate pixel position based
+                // on X flip state
                 let xbit = 1 << (
                     if xflip {
                         x
@@ -780,6 +827,9 @@ impl GPU {
                     } as u32
                 );
 
+                // calculate color number to be
+                // fetched from the palette before
+                // calculating the pixel
                 let color_number =
                     (if b1 & xbit != 0 {
                         1
@@ -795,14 +845,18 @@ impl GPU {
                         0
                     });
 
+                // if color is 0 it means the sprite is not visible
                 if color_number == 0 {
                     continue
                 }
 
-                // here we first check the
+                // here we first check the belowbg sprite property (set by game programmers)
+                // and then this pixel position's bg priority (also set by programmers)
+                // if the background takes priority, the pixel is not calculate
                 if belowbg && self.bg_priority[(spritex + x) as usize] != PrioType::Color0 {
                     continue
                 }
+
 
                 let color = if useobj_1_palette_colors {
                     self.obj_1_palette_colors[color_number]
@@ -810,7 +864,7 @@ impl GPU {
                     self.obj_0_palette_colors[color_number]
                 };
 
-                self.set_color((spritex + x) as usize, color);
+                self.calculate_pixel((spritex + x) as usize, color);
             }
         }
     }

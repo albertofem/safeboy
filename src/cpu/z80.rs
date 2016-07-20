@@ -84,7 +84,7 @@ impl Z80 {
             set_enable_interrupts: 0,
             set_disable_interrupts: 0,
             clock: 0,
-            cpu_speed: (CPU_SPEED / 1000 * 5) as u32
+            cpu_speed: ((CPU_SPEED / 500) * 5) as u32
         }
     }
 
@@ -103,7 +103,7 @@ impl Z80 {
 
             // steps the MMU, this will turn also steps in
             // GPU, keypad, timer, etc.
-            self.mmu.step(op_clock * 4);
+            self.mmu.step(op_clock);
         }
 
         // retract the clock by the same CPU
@@ -3263,7 +3263,7 @@ impl Z80 {
     }
 
     pub fn get_gpu_pixels(&self) -> &[u8] {
-        &self.mmu.gpu.data
+        &self.mmu.gpu.raw_pixels
     }
 
     pub fn key_down(&mut self, key: Key) {
