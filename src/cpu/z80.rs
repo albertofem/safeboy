@@ -169,19 +169,29 @@ impl Z80 {
         self.halted = false;
         self.interrupt_master_enable = false;
 
-        let n = triggered.trailing_zeros();
+        // this stands for the interrupt beign triggered:
+        // 0 -> VBlank
+        // 1 -> GPU STAT
+        // 2 -> Timer
+        // 3 -> Serial Port
+        // 4 -> Keypad
+        let interrupt_number = triggered.trailing_zeros();
 
-        if n >= 5 {
+        if interrupt_number >= 5 {
             panic!("Invalid interrupt triggered");
         }
 
-        self.mmu.interrupt_flag &= !(1 << n);
+        self.mmu.interrupt_flag &= !(1 << interrupt_number);
 
-        let pc = self.registers.program_counter;
+        // get current program counter
+        let program_counter = self.registers.program_counter;
 
-        self.push_stack(pc);
+        // push stack of the current program counter
+        self.push_stack(program_counter);
 
-        self.registers.program_counter = 0x0040 | ((n as u16) << 3);
+        // point program counter to where the interrupt is handled
+        // this is then fetch by the CPU and the opcode executed
+        self.registers.program_counter = 0x0040 | ((interrupt_number as u16) << 3);
 
         // this operation takes 4 cycles
         return 4
@@ -204,8 +214,8 @@ impl Z80 {
 
     fn read_byte(&mut self) -> u8 {
         let b = self.mmu.read_byte(self.registers.program_counter);
-        self.registers.program_counter += 1;
-
+        self.registers.program_counter
+        += 1;
         b
     }
 

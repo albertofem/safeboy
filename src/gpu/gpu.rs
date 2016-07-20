@@ -283,7 +283,6 @@ impl GPU {
                 // advance by one line
                 self.line = self.line.wrapping_add(1);
 
-
                 self.check_interrupt_lyc();
 
                 // we reach the last line, we need to change mode to vertical

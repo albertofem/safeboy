@@ -1,5 +1,9 @@
 use memory::mbc::{MBC, ram_size};
 
+/// MBC 1
+///
+/// This is the first and most primitive MBC1 used in games
+/// It holds a maximum of 2MB of ROM and 32kb of RAM
 pub struct MBC1 {
     rom: Vec<u8>,
     ram: Vec<u8>,
@@ -84,7 +88,7 @@ impl MBC for MBC1 {
         }
     }
 
-    fn read_ram(&self, a: u16) -> u8 {
+    fn read_ram(&self, address: u16) -> u8 {
         if !self.ram_on {
             return 0
         }
@@ -95,7 +99,7 @@ impl MBC for MBC1 {
             0
         };
 
-        self.ram[(ram_bank * 0x2000) | ((a & 0x1FFF) as usize)]
+        self.ram[(ram_bank * 0x2000) | ((address & 0x1FFF) as usize)]
     }
 
     fn write_ram(&mut self, a: u16, v: u8) {
@@ -109,6 +113,6 @@ impl MBC for MBC1 {
             0
         };
 
-        self.ram[(ram_bank * 0x2000) | ((a & 0x1FFF) as usize)] = v;
+        self.ram[(ram_bank * 0x2000) | ((address & 0x1FFF) as usize)] = v;
     }
 }
