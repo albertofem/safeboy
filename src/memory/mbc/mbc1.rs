@@ -102,7 +102,7 @@ impl MBC for MBC1 {
         self.ram[(ram_bank * 0x2000) | ((address & 0x1FFF) as usize)]
     }
 
-    fn write_ram(&mut self, a: u16, v: u8) {
+    fn write_ram(&mut self, address: u16, v: u8) {
         if !self.ram_on {
             return
         }
