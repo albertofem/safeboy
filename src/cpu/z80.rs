@@ -70,7 +70,7 @@ pub struct Z80 {
     /// Stores the CPU speed, which is calculated on initialization
     /// from the CPU_SPEED constant (taken from the original hardware)
     ///
-    /// This is used to step the CPU at a correct speed
+    /// This is used to limit the FPS
     cpu_speed: u32
 }
 
@@ -84,7 +84,7 @@ impl Z80 {
             set_enable_interrupts: 0,
             set_disable_interrupts: 0,
             clock: 0,
-            cpu_speed: (CPU_SPEED / 1000 * 16) as u32
+            cpu_speed: (CPU_SPEED / 1000 * 5) as u32
         }
     }
 
@@ -97,7 +97,7 @@ impl Z80 {
     pub fn step(&mut self) {
         while self.clock < self.cpu_speed {
             // cycle the CPU and obtain how much ticks
-            // the operation took (used to limit the emulation speed)
+            // the operation took (used to limit the FPS)
             let op_clock = self.cycle();
             self.clock += op_clock;
 
@@ -105,14 +105,9 @@ impl Z80 {
             // GPU, keypad, timer, etc.
             self.mmu.step(op_clock * 4);
         }
-    }
 
-    /// Wait for executing
-    ///
-    /// This is to limit the amount of cycles in the CPU
-    /// by the actual CPU physical speed. Because the host CPU
-    /// is faster than the original hardware, we need this limitation
-    pub fn wait(&mut self) {
+        // retract the clock by the same CPU
+        // speed value, in order to keep cycling
         self.clock -= self.cpu_speed
     }
 

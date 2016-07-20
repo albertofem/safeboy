@@ -2,11 +2,19 @@ use cpu::z80::Z80;
 use display::display::{Display, Event, EventType};
 use frontend::keypad::Key;
 
+/// GameBoy
+///
+/// This is the main entry point to run GameBoy games.
+/// It contains the CPU and the OpenGL display
 pub struct Gameboy {
     cpu: Z80,
     display: Display
 }
 
+/// Basic signals
+///
+/// These signals are used to process non-key events,
+/// like closing the window
 #[derive(PartialEq, Copy, Clone)]
 enum EventSignal {
     None,
@@ -14,6 +22,9 @@ enum EventSignal {
 }
 
 impl Gameboy {
+    /// Creates a new GameBoy instance
+    ///
+    /// We need the GameBoy (.gb) file that will be run
     pub fn new(rom_file: &str) -> Gameboy {
         Gameboy {
             cpu: Z80::new(rom_file),
@@ -21,6 +32,14 @@ impl Gameboy {
         }
     }
 
+    /// Runs the game
+    ///
+    /// This will enter the main loop and process
+    /// CPU, MMU, GPU cycles and finally draw them
+    /// to the OpenGL display.
+    ///
+    /// It will also poll for events (keyboard) and translate
+    /// them into GameBoy-valid keypad events
     pub fn run(&mut self) -> () {
         self.display.initialize();
 
@@ -31,7 +50,6 @@ impl Gameboy {
 
             self.cpu.step();
             self.display.draw(self.cpu.get_gpu_pixels());
-            self.cpu.wait();
         }
     }
 

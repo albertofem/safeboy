@@ -11,12 +11,22 @@ use self::glium::glutin::VirtualKeyCode;
 use self::glium::glutin::ElementState::{Pressed, Released};
 use std::borrow::Cow;
 
+/// Type of event
+///
+/// Whether a button was pressed or not .This is just
+/// to map the window events (as processed by Glium)
+/// to GameBoy events
 pub enum EventType {
     None,
     Pressed,
     Released
 }
 
+/// Event enum
+///
+/// This contains the GameBoy events that will be later
+/// translated to Keypad keys and processed by the keypad
+/// module
 pub enum Event {
     Unknown,
     None,
@@ -31,6 +41,10 @@ pub enum Event {
     Right
 }
 
+/// Display struct
+///
+/// It contains the Glutin display (which is the window)
+/// and the screen (a 2d texture where pixels are drawn)
 pub struct Display {
     glium_display: Option<GlutinFacade>,
     screen: Option<Texture2d>
@@ -44,6 +58,10 @@ impl Display {
         }
     }
 
+    /// Initialize the display
+    ///
+    /// We create a Glium window with the GameBoy dimensions and
+    /// also de 2d texture (with same dimensions)
     pub fn initialize(&mut self) -> () {
         self.glium_display = Some(glium::glutin::WindowBuilder::new()
             .with_dimensions(WIDTH, HEIGHT)
@@ -55,6 +73,7 @@ impl Display {
         self.screen = Some(Texture2d::empty_with_format(
                 self.glium_display.as_mut().unwrap(),
                 glium::texture::UncompressedFloatFormat::U8U8U8,
+                // we don't need mipmap as we are working with raw bytes
                 glium::texture::MipmapsOption::NoMipmap,
                 WIDTH as u32,
                 HEIGHT as u32
@@ -64,6 +83,12 @@ impl Display {
         self.reset();
     }
 
+    /// Poll events
+    ///
+    /// This will return a tuple containing the EventType
+    /// and the Event ocurred in the Window system. This is
+    /// mainly to capture key presses to be later converted
+    /// to GameBoy understandable keys
     pub fn poll_events(&mut self) -> (EventType, Event) {
         for event in self.glium_display.as_mut().unwrap().poll_events() {
             return match event {
@@ -113,7 +138,14 @@ impl Display {
         }
     }
 
+    /// Draws the screen
+    ///
+    /// This method will draw all raw pixels in the screen
+    /// using OpenGL primitives. More info in the method
+    /// implementation.
     pub fn draw(&mut self, raw_pixels: &[u8]) {
+        // create a raw 2d image with pixels coming
+        // from the GPU
         let raw_image = RawImage2d {
             data: Cow::Borrowed(raw_pixels),
             width: WIDTH,
@@ -121,6 +153,8 @@ impl Display {
             format: glium::texture::ClientFormat::U8U8U8
         };
 
+        // write the raw image to the 2d texture buffer
+        // starting at 0,0 top, bottom
         self.screen.as_mut().unwrap().write(
             glium::Rect {
                 left: 0,
@@ -131,6 +165,7 @@ impl Display {
             raw_image
         );
 
+        // select the target from our display
         let target = self.glium_display.as_mut().unwrap().draw();
 
         self.screen.as_mut().unwrap().as_surface().blit_whole_color_to(
