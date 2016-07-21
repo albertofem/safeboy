@@ -240,7 +240,7 @@ impl GPU {
             obj_1_palette_colors: [0; 4],
             video_ram: [0; VIDEO_RAM_SIZE],
             video_object_attribute_memory: [0; VIDEO_OBJECT_ATTRIBUTE_MEMORY_SIZE],
-            raw_pixels: vec![0; WIDTH * HEIGHT * 3],
+            raw_pixels: vec![0; WIDTH * HEIGHT * 3], // each pixel is a RGB value, so 24 bits are needed per pixel
             bg_priority: [PrioType::Normal; WIDTH],
             interrupt: 0,
         }
@@ -600,6 +600,9 @@ impl GPU {
     }
 
     /// Calculates a pixel
+    ///
+    /// Each pixel has 3 color components, which are RGB as
+    /// pero OpenGL pixel format (U8U8U8)
     fn calculate_pixel(&mut self, position_x: usize, color: u8) {
         let position_y = self.line as usize;
 

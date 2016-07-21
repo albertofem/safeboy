@@ -144,6 +144,7 @@ impl Display {
     /// using OpenGL primitives. More info in the method
     /// implementation.
     pub fn draw(&mut self, raw_pixels: &[u8]) {
+
         // create a raw 2d image with pixels coming
         // from the GPU. From Glium docs:
         // The data must start by the bottom-left hand corner pixel and progress left-to-right and bottom-to-top.
@@ -153,6 +154,8 @@ impl Display {
             data: Cow::Borrowed(raw_pixels),
             width: WIDTH,
             height: HEIGHT,
+            // each pixel is represented with three components (RGB)
+            // this flag tells OpenGL to read it in this format
             format: glium::texture::ClientFormat::U8U8U8
         };
 
