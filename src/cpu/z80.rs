@@ -84,7 +84,7 @@ impl Z80 {
             set_enable_interrupts: 0,
             set_disable_interrupts: 0,
             clock: 0,
-            cpu_speed: ((CPU_SPEED / 500) * 5) as u32
+            cpu_speed: ((CPU_SPEED / 1000) * 16) as u32
         }
     }
 
