@@ -3,7 +3,7 @@ safeboy, a gameboy emulator in Rust
 
 [![Build Status](https://travis-ci.com/albertofem/safeboy.svg?token=ydDBs98aEyX2bMHcZpEx&branch=master)](https://travis-ci.com/albertofem/safeboy)
 
-![Safeboy Logo](https://raw.githubusercontent.com/albertofem/safeboy/master/logo.png?token=AAY_gE9KhnJZpdV37GtHCtK0iQXJ_WJPks5Wt1c1wA%3D%3D)
+![Safeboy Logo](https://raw.githubusercontent.com/albertofem/safeboy/master/logo.png)
 
 safeboy is a GameBoy (8bit, black and white) emulator made in Rust. It's based mainly on RBoy implementation (https://github.com/mvdnes/rboy).
 
