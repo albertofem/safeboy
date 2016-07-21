@@ -145,7 +145,10 @@ impl Display {
     /// implementation.
     pub fn draw(&mut self, raw_pixels: &[u8]) {
         // create a raw 2d image with pixels coming
-        // from the GPU
+        // from the GPU. From Glium docs:
+        // The data must start by the bottom-left hand corner pixel and progress left-to-right and bottom-to-top.
+        // As our pixel data is not this way, we will later need to perform a correction
+        // in order to draw in the OpenGL context
         let raw_image = RawImage2d {
             data: Cow::Borrowed(raw_pixels),
             width: WIDTH,
@@ -154,7 +157,7 @@ impl Display {
         };
 
         // write the raw image to the 2d texture buffer
-        // starting at 0,0 top, bottom
+        // starting bottom leff for the display width and height
         self.screen.as_mut().unwrap().write(
             glium::Rect {
                 left: 0,
@@ -168,15 +171,18 @@ impl Display {
         // select the target from our display
         let target = self.glium_display.as_mut().unwrap().draw();
 
+        // paste texture in our OpenGL context
+        // we need to convert our generated from top left pixel array
+        // to OpenGL's coordinate system (where Y is going from bottom to top)
         self.screen.as_mut().unwrap().as_surface().blit_whole_color_to(
             &target,
             &glium::BlitTarget {
                 left: 0,
                 bottom: HEIGHT,
                 width: WIDTH as i32,
-                height: -(HEIGHT as i32)
+                height: -(HEIGHT as i32) // invert vertical
             },
-            glium::uniforms::MagnifySamplerFilter::Linear
+            glium::uniforms::MagnifySamplerFilter::Linear // what to in case
         );
 
         target.finish().unwrap();

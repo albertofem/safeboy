@@ -844,7 +844,7 @@ impl GPU {
                         0
                     });
 
-                // if color is 0 it means the sprite is not visible
+                // if color is 0 it means the pixel is not visible
                 if color_number == 0 {
                     continue
                 }
