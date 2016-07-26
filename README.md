@@ -1,7 +1,7 @@
 safeboy, a gameboy emulator in Rust
 ====
 
-[![Build Status](https://travis-ci.com/albertofem/safeboy.svg?token=ydDBs98aEyX2bMHcZpEx&branch=master)](https://travis-ci.com/albertofem/safeboy)
+[![Build Status](https://travis-ci.org/albertofem/safeboy.svg?branch=master)](https://travis-ci.org/albertofem/safeboy)
 
 ![Safeboy Logo](https://raw.githubusercontent.com/albertofem/safeboy/master/logo.png)
 
