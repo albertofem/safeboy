@@ -602,7 +602,7 @@ impl GPU {
     /// Calculates a pixel
     ///
     /// Each pixel has 3 color components, which are RGB as
-    /// pero OpenGL pixel format (U8U8U8)
+    /// per OpenGL pixel format (U8U8U8)
     fn calculate_pixel(&mut self, position_x: usize, color: u8) {
         let position_y = self.line as usize;
 
