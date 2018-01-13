@@ -3,12 +3,14 @@ extern crate glium;
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
 
-use self::glium::{DisplayBuild, Surface};
-use self::glium::backend::glutin_backend::GlutinFacade;
+use self::glium::Surface;
+use self::glium::backend::glutin::Display as GliumDisplay;
+use self::glium::glutin::EventsLoop;
 use self::glium::texture::texture2d::Texture2d;
 use self::glium::texture::RawImage2d;
 use self::glium::glutin::VirtualKeyCode;
 use self::glium::glutin::ElementState::{Pressed, Released};
+use self::glium::glutin;
 use std::borrow::Cow;
 
 /// Type of event
@@ -19,7 +21,7 @@ use std::borrow::Cow;
 pub enum EventType {
     None,
     Pressed,
-    Released
+    Released,
 }
 
 /// Event enum
@@ -38,7 +40,7 @@ pub enum Event {
     Up,
     Down,
     Left,
-    Right
+    Right,
 }
 
 /// Display struct
@@ -46,15 +48,17 @@ pub enum Event {
 /// It contains the Glutin display (which is the window)
 /// and the screen (a 2d texture where pixels are drawn)
 pub struct Display {
-    glium_display: Option<GlutinFacade>,
-    screen: Option<Texture2d>
+    event_loop: Option<EventsLoop>,
+    glium_display: Option<GliumDisplay>,
+    screen: Option<Texture2d>,
 }
 
 impl Display {
     pub fn new() -> Display {
         Display {
+            event_loop: None,
             glium_display: None,
-            screen: None
+            screen: None,
         }
     }
 
@@ -63,21 +67,29 @@ impl Display {
     /// We create a Glium window with the GameBoy dimensions and
     /// also de 2d texture (with same dimensions)
     pub fn initialize(&mut self) -> () {
-        self.glium_display = Some(glium::glutin::WindowBuilder::new()
+        self.event_loop = Some(EventsLoop::new());
+
+        let window = glium::glutin::WindowBuilder::new()
             .with_dimensions(WIDTH, HEIGHT)
-            .with_title(format!("Safeboy"))
-            .build_glium()
-            .unwrap()
-        );
+            .with_title(format!("Safeboy"));
+
+        let context = glium::glutin::ContextBuilder::new()
+            .with_vsync(true);
+
+        self.glium_display = Some(GliumDisplay::new(
+            window,
+            context,
+            self.event_loop.as_mut().unwrap(),
+        ).unwrap());
 
         self.screen = Some(Texture2d::empty_with_format(
-                self.glium_display.as_mut().unwrap(),
-                glium::texture::UncompressedFloatFormat::U8U8U8,
-                // we don't need mipmap as we are working with raw bytes
-                glium::texture::MipmapsOption::NoMipmap,
-                WIDTH as u32,
-                HEIGHT as u32
-            ).unwrap()
+            self.glium_display.as_mut().unwrap(),
+            glium::texture::UncompressedFloatFormat::U8U8U8,
+            // we don't need mipmap as we are working with raw bytes
+            glium::texture::MipmapsOption::NoMipmap,
+            WIDTH as u32,
+            HEIGHT as u32,
+        ).unwrap()
         );
 
         self.reset();
@@ -90,50 +102,61 @@ impl Display {
     /// mainly to capture key presses to be later converted
     /// to GameBoy understandable keys
     pub fn poll_events(&mut self) -> (EventType, Event) {
-        for event in self.glium_display.as_mut().unwrap().poll_events() {
-            return match event {
-                glium::glutin::Event::Closed => {
-                    (EventType::None, Event::Closed)
-                },
-                glium::glutin::Event::KeyboardInput(Pressed, _, Some(pressed_key)) => {
-                    (EventType::Pressed, Display::map_events(pressed_key).unwrap())
-                },
-                glium::glutin::Event::KeyboardInput(Released, _, Some(released_key)) => {
-                    (EventType::Released, Display::map_events(released_key).unwrap())
-                }
-                _ => (EventType::None, Event::None)
-            };
-        }
+        let mut event_type = EventType::None;
+        let mut event_triggered = Event::None;
 
-        (EventType::None, Event::None)
+        self.event_loop.as_mut().unwrap().poll_events(|event| {
+            match event {
+                glutin::Event::WindowEvent { event, .. } => match event {
+                    glutin::WindowEvent::Closed => {
+                        event_type = EventType::None;
+                        event_triggered = Event::Closed;
+                    }
+                    glutin::WindowEvent::KeyboardInput { input, .. } => match input.state {
+                        Pressed => {
+                            event_type = EventType::Pressed;
+                            event_triggered = Display::map_events(input.virtual_keycode.unwrap()).unwrap();
+                        }
+                        Released => {
+                            event_type = EventType::Released;
+                            event_triggered = Display::map_events(input.virtual_keycode.unwrap()).unwrap();
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        });
+
+        return (event_type, event_triggered);
     }
 
     fn map_events(glutin_key: VirtualKeyCode) -> Result<Event, &'static str> {
         match glutin_key {
             VirtualKeyCode::Return => {
                 Ok(Event::Start)
-            },
+            }
             VirtualKeyCode::Back => {
                 Ok(Event::Select)
             }
             VirtualKeyCode::Z => {
                 Ok(Event::A)
-            },
+            }
             VirtualKeyCode::X => {
                 Ok(Event::B)
-            },
+            }
             VirtualKeyCode::Up => {
                 Ok(Event::Up)
-            },
+            }
             VirtualKeyCode::Down => {
                 Ok(Event::Down)
-            },
+            }
             VirtualKeyCode::Left => {
                 Ok(Event::Left)
-            },
+            }
             VirtualKeyCode::Right => {
                 Ok(Event::Right)
-            },
+            }
             _ => Ok(Event::Unknown)
         }
     }
@@ -156,7 +179,7 @@ impl Display {
             height: HEIGHT,
             // each pixel is represented with three components (RGB)
             // this flag tells OpenGL to read it in this format
-            format: glium::texture::ClientFormat::U8U8U8
+            format: glium::texture::ClientFormat::U8U8U8,
         };
 
         // write the raw image to the 2d texture buffer
@@ -166,9 +189,9 @@ impl Display {
                 left: 0,
                 bottom: 0,
                 width: WIDTH as u32,
-                height: HEIGHT as u32
+                height: HEIGHT as u32,
             },
-            raw_image
+            raw_image,
         );
 
         // select the target from our display
@@ -183,9 +206,9 @@ impl Display {
                 left: 0,
                 bottom: HEIGHT,
                 width: WIDTH as i32,
-                height: -(HEIGHT as i32) // invert vertical
+                height: -(HEIGHT as i32), // invert vertical
             },
-            glium::uniforms::MagnifySamplerFilter::Linear // what to in case
+            glium::uniforms::MagnifySamplerFilter::Linear, // what to in case
         );
 
         target.finish().unwrap();
