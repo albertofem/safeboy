@@ -2,6 +2,8 @@ use memory::mbc;
 use cpu::timer::Timer;
 use frontend::keypad::Keypad;
 use gpu::gpu::GPU;
+use audio::audio;
+use audio::audio::Audio;
 
 /// Working RAM, 8k bytes
 const WORKING_RAM_SIZE: usize = 0x8000;
@@ -77,7 +79,9 @@ pub struct MMU {
     /// memory constrains of the GameBoy
     ///
     /// More details in the module.
-    pub mbc: Box<mbc::MBC+'static>,
+    pub mbc: Box<dyn mbc::MBC+'static>,
+
+    pub audio: audio::Audio
 }
 
 impl MMU {
@@ -95,7 +99,8 @@ impl MMU {
             timer: Timer::new(),
             keypad: Keypad::new(),
             gpu: GPU::new(),
-            mbc: mbc
+            mbc,
+            audio: Audio::new()
         };
 
         mmu.reset();
@@ -177,27 +182,27 @@ impl MMU {
     pub fn read_byte(&mut self, address: u16) -> u8 {
         match address {
 
-            0x0000 ... 0x7FFF => {
+            0x0000 ..= 0x7FFF => {
                 self.mbc.read_rom(address)
             },
 
-            0x8000 ... 0x9FFF => {
+            0x8000 ..= 0x9FFF => {
                 self.gpu.read_byte(address)
             },
 
-            0xA000 ... 0xBFFF => {
+            0xA000 ..= 0xBFFF => {
                 self.mbc.read_ram(address)
             },
 
-            0xC000 ... 0xCFFF | 0xE000 ... 0xEFFF => {
+            0xC000 ..= 0xCFFF | 0xE000 ..= 0xEFFF => {
                 self.working_ram[address as usize & 0x0FFF]
             },
 
-            0xD000 ... 0xDFFF | 0xF000 ... 0xFDFF => {
+            0xD000 ..= 0xDFFF | 0xF000 ..= 0xFDFF => {
                 self.working_ram[0x1000 | address as usize & 0x0FFF]
             },
 
-            0xFE00 ... 0xFE9F => {
+            0xFE00 ..= 0xFE9F => {
                 self.gpu.read_byte(address)
             },
 
@@ -205,12 +210,12 @@ impl MMU {
                 self.keypad.read_byte()
             },
 
-            0xFF01 ... 0xFF02 => {
+            0xFF01 ..= 0xFF02 => {
                 // Serial unimplemented
                 0x0
             },
 
-            0xFF04 ... 0xFF07 => {
+            0xFF04 ..= 0xFF07 => {
                 self.timer.read_byte(address)
             },
 
@@ -218,7 +223,7 @@ impl MMU {
                 self.interrupt_flag
             },
 
-            0xFF10 ... 0xFF3F => {
+            0xFF10 ..= 0xFF3F => {
                 // Sound unimplemented
                 0x0
             },
@@ -227,15 +232,15 @@ impl MMU {
                 0
             },
 
-            0xFF40 ... 0xFF4F => {
+            0xFF40 ..= 0xFF4F => {
                 self.gpu.read_byte(address)
             },
 
-            0xFF68 ... 0xFF6B => {
+            0xFF68 ..= 0xFF6B => {
                 self.gpu.read_byte(address)
             },
 
-            0xFF80 ... 0xFFFE => {
+            0xFF80 ..= 0xFFFE => {
                 self.high_ram[address as usize & 0x007F]
             },
 
@@ -255,31 +260,31 @@ impl MMU {
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
             // extra MBC memory. see more details in the MBC module
-            0x0000 ... 0x7FFF =>  {
+            0x0000 ..= 0x7FFF =>  {
                 self.mbc.write_rom(address, value)
             },
 
-            0x8000 ... 0x9FFF => {
+            0x8000 ..= 0x9FFF => {
                 self.gpu.write_byte(address, value)
             },
 
             // more MBC memory!
-            0xA000 ... 0xBFFF => {
+            0xA000 ..= 0xBFFF => {
                 self.mbc.write_ram(address, value)
             },
 
             // internal working ram (bank 0)
-            0xC000 ... 0xCFFF | 0xE000 ... 0xEFFF => {
+            0xC000 ..= 0xCFFF | 0xE000 ..= 0xEFFF => {
                 self.working_ram[address as usize & 0x0FFF] = value
             },
 
             // internal working ram (bank 1)
-            0xD000 ... 0xDFFF | 0xF000 ... 0xFDFF => {
+            0xD000 ..= 0xDFFF | 0xF000 ..= 0xFDFF => {
                 self.working_ram[0x1000 | (address as usize & 0x0FFF)] = value
             },
 
             // gpu, mapped to OAM (object attribute memory)
-            0xFE00 ... 0xFE9F => {
+            0xFE00 ..= 0xFE9F => {
                 self.gpu.write_byte(address, value)
             },
 
@@ -289,16 +294,17 @@ impl MMU {
             },
 
             // serial port, not implemented
-            0xFF01 ... 0xFF03 => {
+            0xFF01 ..= 0xFF03 => {
             }
 
             // timer
-            0xFF04 ... 0xFF07 => {
+            0xFF04 ..= 0xFF07 => {
                 self.timer.write_byte(address, value)
             },
 
-            // sound, unimplemented
-            0xFF10 ... 0xFF3F => {
+            // sound
+            0xFF10 ..= 0xFF3F => {
+                self.audio.write_byte(address, value)
             },
 
             // DMA (Direct Memory Access) transfer from
@@ -307,7 +313,7 @@ impl MMU {
                 self.dma_ram_to_oam_transfer(value)
             },
 
-            0xFF40 ... 0xFF4F => {
+            0xFF40 ..= 0xFF4F => {
                 self.gpu.write_byte(address, value)
             },
 
@@ -315,7 +321,7 @@ impl MMU {
                 self.interrupt_flag = value
             },
 
-            0xFF80 ... 0xFFFE => {
+            0xFF80 ..= 0xFFFE => {
                 self.high_ram[address as usize & 0x007F] = value
             },
 

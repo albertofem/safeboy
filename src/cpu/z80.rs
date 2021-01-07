@@ -3032,9 +3032,7 @@ impl Z80 {
             0xFF => {
                 self.registers.a = self.registers.a | (1 << 7);
                 2
-            },
-
-            other => panic!("Bad CB instruction: {:2X}", other),
+            }
         }
     }
 

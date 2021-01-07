@@ -322,9 +322,9 @@ impl GPU {
     /// each of the address ranges commented in the code.
     pub fn read_byte(&self, address: u16) -> u8 {
         match address {
-            0x8000 ... 0x9FFF => self.video_ram                     [address as usize & 0x1FFF],
+            0x8000 ..= 0x9FFF => self.video_ram                     [address as usize & 0x1FFF],
 
-            0xFE00 ... 0xFE9F => self.video_object_attribute_memory [address as usize - 0xFE00],
+            0xFE00 ..= 0xFE9F => self.video_object_attribute_memory [address as usize - 0xFE00],
 
             // GPU Control read. we return the status of the LCD
             // as a 8 bit hex number. This is a good example on how bitwise
@@ -399,9 +399,9 @@ impl GPU {
         match address {
             // manipulates the video ram raw_pixels. We apply the AND & operator
             // in order to map the hex address requested to our 0-indexed vector
-            0x8000 ... 0x9FFF => self.video_ram[address as usize & 0x1FFF] = value,
+            0x8000 ..= 0x9FFF => self.video_ram[address as usize & 0x1FFF] = value,
 
-            0xFE00 ... 0xFE9F => self.video_object_attribute_memory[address as usize - 0xFE00] = value,
+            0xFE00 ..= 0xFE9F => self.video_object_attribute_memory[address as usize - 0xFE00] = value,
 
             // GPU control write. see more details in the method
             0xFF40 => {

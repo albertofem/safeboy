@@ -59,11 +59,11 @@ impl MBC for MBC1 {
 
     fn write_rom(&mut self, a: u16, v: u8) {
         match a {
-            0x0000 ... 0x1FFF => {
+            0x0000 ..= 0x1FFF => {
                 self.ram_on = v == 0x0A;
             },
 
-            0x2000 ... 0x3FFF => {
+            0x2000 ..= 0x3FFF => {
                 self.rom_bank =
                     (self.rom_bank & 0x60) |
                     match (v as usize) & 0x1F {
@@ -72,7 +72,7 @@ impl MBC for MBC1 {
                     }
             },
 
-            0x4000 ... 0x5FFF => {
+            0x4000 ..= 0x5FFF => {
                 if !self.ram_mode {
                     self.rom_bank = self.rom_bank & 0x1F | (((v as usize) & 0x03) << 5)
                 } else {
@@ -80,7 +80,7 @@ impl MBC for MBC1 {
                 }
             },
 
-            0x6000 ... 0x7FFF => {
+            0x6000 ..= 0x7FFF => {
                 self.ram_mode = (v & 0x01) == 0x01;
             },
 

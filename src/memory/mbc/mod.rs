@@ -37,7 +37,7 @@ pub trait MBC {
 ///
 /// The result is returned as a Box, which contains the raw
 /// game data allocaated in the stack
-pub fn load_mbc(rom_file: &str) -> Result<Box<MBC+'static>, String> {
+pub fn load_mbc(rom_file: &str) -> Result<Box<dyn MBC+'static>, String> {
     let mut data = vec![];
     let mut file = File::open(rom_file).unwrap();
 
@@ -53,12 +53,12 @@ pub fn load_mbc(rom_file: &str) -> Result<Box<MBC+'static>, String> {
     match mbc_type {
         0x00 => {
             let mbc = mbc0::MBC0::new(data);
-            Ok(Box::new(mbc) as Box<MBC>)
+            Ok(Box::new(mbc) as Box<dyn MBC>)
         },
 
-        0x01 ... 0x03 =>  {
+        0x01 ..= 0x03 =>  {
             let mbc = mbc1::MBC1::new(data);
-            Ok(Box::new(mbc) as Box<MBC>)
+            Ok(Box::new(mbc) as Box<dyn MBC>)
         },
 
         _ => Err(format!("Unsupported MBC: {0:x}", mbc_type)),
