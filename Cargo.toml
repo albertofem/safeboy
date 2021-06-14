@@ -11,3 +11,4 @@ path = "src/safeboy.rs"
 [dependencies]
 clap = "*"
 glium = "0.19.*"
+blip_buf = ">=0.1.4"

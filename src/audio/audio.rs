@@ -1,6 +1,16 @@
+use super::blip_buf::BlipBuf;
+
+const WAVE_PATTERN : [[i32; 8]; 4] = [[-1,-1,-1,-1,1,-1,-1,-1],[-1,-1,-1,-1,1,1,-1,-1],[-1,-1,1,1,1,1,-1,-1],[1,1,1,1,-1,-1,1,1]];
+const CLOCKS_PER_SECOND : u32 = 1 << 22;
+const OUTPUT_SAMPLE_COUNT : usize = 2000;
+
 pub struct Audio {
     on: bool,
     channel1: ToneSweepChannel,
+}
+
+pub trait AudioPlayer : Send {
+    fn play(&mut self, left_channel: &[f32], right_channel: &[f32]);
 }
 
 struct VolumeEnvelope {
@@ -13,12 +23,15 @@ struct ToneSweepChannel {
     sweep_shift: u8,
     sweep_direction: bool,
     sweep_time: u8,
+    sweep_frequency: u16,
     wave_duty: u8,
     sound_length_next: u8,
     sound_length: u8,
     frequency_lsb: u8, // separated for clarity
     frequency_msb: u8,
-    length_enabled: bool
+    current_frequency: u16,
+    length_enabled: bool,
+    trigger_event: bool
 }
 
 impl VolumeEnvelope
@@ -39,12 +52,15 @@ impl ToneSweepChannel
             sweep_shift: 0,
             sweep_direction: false,
             sweep_time: 0,
+            sweep_frequency: 0,
             wave_duty: 0,
             sound_length_next: 0,
             sound_length: 0,
             frequency_lsb: 0,
             frequency_msb: 0,
+            current_frequency: 0,
             length_enabled: false,
+            trigger_event: false
         }
     }
 
@@ -69,15 +85,43 @@ impl ToneSweepChannel
             },
             0xFF14 => {
                 self.frequency_msb = value & 0x7;
-                self.length_enabled = (value & 0x40) == 0x40;
-
-                let trigger = (value & 0x80) == 0x80;
-
-                if trigger {
-                    // trigger event
-                }
+                self.length_enabled = (value & 64) == 64;
+                self.trigger_event = (value & 128) == 128;
             }
             _ => panic!("Unhandled audio write: {:04X} - {:08b}", address, value)
+        }
+    }
+
+    pub fn step(&mut self)
+    {
+        self.current_frequency = ((self.frequency_lsb << 3) as u16) | self.frequency_msb as u16;
+
+        let period = if self.current_frequency > 2048 {
+            0
+        } else {
+            (2048 - (self.current_frequency as u32)) * 4
+        };
+
+        // handle trigger
+        if self.trigger_event {
+            if self.sweep_time != 0 {
+                let offset = self.current_frequency << self.sweep_shift;
+
+                if self.sweep_direction {
+                    if self.current_frequency <= offset
+                    {
+                        self.sweep_frequency = 0;
+                    } else {
+                        self.sweep_frequency -= offset;
+                    }
+                } else {
+                    if self.sweep_frequency >= 2048 - offset {
+                        self.sweep_frequency = 2048
+                    } else {
+                        self.sweep_frequency += offset;
+                    }
+                }
+            }
         }
     }
 }

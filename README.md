@@ -48,3 +48,5 @@ MIT
 | [Z-80 articles](http://www.righto.com/search/label/Z-80) | Collection of low level details about the Z80 |
 | [Z-80 Stack](http://www.smspower.org/Development/Stack) | Good article on the Z80 stack and assembler details |
 | [GameBoy Playmobile](http://www.rickard.gunee.com/projects/playmobile/html/index.html) | Building a wireless GameBoy, good series of articles |
+| [GameBoy sound hardware](https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware) | Hardware guide for audio |
+| [GameBoy sound controller](https://gbdev.gg8.se/wiki/articles/Sound_Controller) | More docs on audio hardware |
