@@ -1,27 +1,25 @@
 extern crate safeboy;
 extern crate clap;
 
-use clap::{Arg, App};
+use clap::Parser;
 use safeboy::frontend::gameboy::Gameboy;
 
-fn main() {
-    let matches = App::new("Safeboy")
-        .version("1.0")
-        .author("Alberto Fernández <albertofem@gmail.com>")
-        .about("A GameBoy emulator")
-        .arg(Arg::with_name("ROM")
-                .help("Rom file to emulate")
-                .required(true)
-                .index(1)
-            )
-        .get_matches();
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    rom: String,
+}
 
-    let rom_file = matches.value_of("ROM").unwrap();
+fn main() {
+    let args = Args::parse();
+
+    let rom_file = args.rom;
 
     println!("Welcome to Safeboy! We are preparing your rom to emulate...");
     println!("Loading rom file: {}", rom_file);
 
-    let mut gameboy = Gameboy::new(rom_file);
+    let mut gameboy = Gameboy::new(rom_file.as_str());
 
     gameboy.run();
 }

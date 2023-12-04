@@ -1,10 +1,10 @@
 .PHONY: run test doc
 
 tetris:
-	RUST_BACKTRACE=1 cargo run data/tetris.gb
+	RUST_BACKTRACE=1 cargo run -- --rom data/tetris.gb
 
 zelda:
-	RUST_BACKTRACE=1 cargo run data/zelda.gb
+	RUST_BACKTRACE=1 cargo run -- --rom data/zelda.gb
 
 test:
 	RUST_BACKTRACE=1 cargo test --lib

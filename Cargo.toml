@@ -9,6 +9,6 @@ name = "safeboy"
 path = "src/safeboy.rs"
 
 [dependencies]
-clap = "*"
+clap = { version = "*", features = ["derive"] }
 glium = "0.19.*"
 blip_buf = ">=0.1.4"
